@@ -1,0 +1,20 @@
+[package]
+name        = "idep-plugin"
+description = "WASM plugin SDK for Idep — extensibility via WebAssembly"
+keywords    = ["ide", "plugin", "wasm"]
+categories  = ["development-tools"]
+
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+homepage.workspace    = true
+
+[dependencies]
+serde.workspace       = true
+serde_json.workspace  = true
+anyhow.workspace      = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }

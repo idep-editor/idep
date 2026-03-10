@@ -48,13 +48,12 @@ fn default_ollama_url() -> String { "http://localhost:11434".into() }
 /// A backend is anything that can stream completions
 #[async_trait]
 pub trait Backend: Send + Sync {
-    /// Complete a prompt, yielding tokens via the callback
+    /// Complete a prompt and return the full response
     async fn complete(
         &self,
         prompt: &str,
         max_tokens: u32,
-        on_token: impl FnMut(Token) + Send,
-    ) -> Result<()>;
+    ) -> Result<String>;
 
     /// Name for logging / debug
     fn name(&self) -> &str;

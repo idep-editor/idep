@@ -30,8 +30,7 @@ impl Backend for HuggingFaceBackend {
         &self,
         prompt: &str,
         max_tokens: u32,
-        mut on_token: impl FnMut(String) + Send,
-    ) -> Result<()> {
+    ) -> Result<String> {
         debug!("HuggingFace complete: model={}", self.model);
 
         use serde_json::json;
@@ -53,9 +52,9 @@ impl Backend for HuggingFaceBackend {
 
         let result: serde_json::Value = response.json().await?;
         if let Some(text) = result[0]["generated_text"].as_str() {
-            on_token(text.to_string());
+            Ok(text.to_string())
+        } else {
+            Ok(String::new())
         }
-
-        Ok(())
     }
 }

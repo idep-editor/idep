@@ -1,0 +1,25 @@
+[package]
+name        = "idep-lsp"
+description = "LSP server bridge for Idep — language server protocol orchestration"
+keywords    = ["ide", "lsp", "language-server"]
+categories  = ["development-tools"]
+
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+homepage.workspace    = true
+
+[dependencies]
+tokio.workspace       = true
+anyhow.workspace      = true
+thiserror.workspace   = true
+tracing.workspace     = true
+serde.workspace       = true
+serde_json.workspace  = true
+lsp-types.workspace   = true
+jsonrpc-core.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }

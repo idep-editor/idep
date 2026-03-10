@@ -33,8 +33,7 @@ impl Backend for AnthropicBackend {
         &self,
         prompt: &str,
         max_tokens: u32,
-        mut on_token: impl FnMut(String) + Send,
-    ) -> Result<()> {
+    ) -> Result<String> {
         debug!("Anthropic complete: model={}", self.model);
 
         let body = json!({
@@ -46,7 +45,7 @@ impl Backend for AnthropicBackend {
             ]
         });
 
-        let mut response = self.client
+        let response = self.client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -60,6 +59,7 @@ impl Backend for AnthropicBackend {
         use futures_util::StreamExt;
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut result = String::new();
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
@@ -77,13 +77,13 @@ impl Backend for AnthropicBackend {
                             .pointer("/delta/text")
                             .and_then(|v| v.as_str())
                         {
-                            on_token(text.to_string());
+                            result.push_str(text);
                         }
                     }
                 }
             }
         }
 
-        Ok(())
+        Ok(result)
     }
 }

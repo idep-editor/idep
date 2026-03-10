@@ -29,8 +29,7 @@ impl Backend for OpenAiCompatBackend {
         &self,
         prompt: &str,
         max_tokens: u32,
-        mut on_token: impl FnMut(String) + Send,
-    ) -> Result<()> {
+    ) -> Result<String> {
         debug!("OpenAI-compat complete: model={} url={}", self.model, self.url);
 
         let body = json!({
@@ -50,11 +49,12 @@ impl Backend for OpenAiCompatBackend {
             req = req.bearer_auth(key);
         }
 
-        let mut response = req.send().await?.error_for_status()?;
+        let response = req.send().await?.error_for_status()?;
 
         use futures_util::StreamExt;
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut result = String::new();
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
@@ -71,13 +71,13 @@ impl Backend for OpenAiCompatBackend {
                             .pointer("/choices/0/delta/content")
                             .and_then(|v| v.as_str())
                         {
-                            on_token(text.to_string());
+                            result.push_str(text);
                         }
                     }
                 }
             }
         }
 
-        Ok(())
+        Ok(result)
     }
 }

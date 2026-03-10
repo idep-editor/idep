@@ -60,26 +60,19 @@ impl ChatSession {
         );
     }
 
-    /// Send a user message, stream the response via callback
+    /// Send a user message and return the response
     pub async fn send(
         &mut self,
         message: &str,
-        on_token: impl FnMut(String) + Send,
     ) -> Result<String> {
         self.history.push(ChatMessage::user(message));
 
         // Build prompt from full history
         let prompt = self.build_prompt();
 
-        let mut full_response = String::new();
-        let mut cb = on_token;
-        self.backend.complete(&prompt, 2048, |token| {
-            full_response.push_str(&token);
-            cb(token);
-        }).await?;
-
-        self.history.push(ChatMessage::assistant(&full_response));
-        Ok(full_response)
+        let response = self.backend.complete(&prompt, 2048).await?;
+        self.history.push(ChatMessage::assistant(&response));
+        Ok(response)
     }
 
     /// Clear conversation but keep system prompt

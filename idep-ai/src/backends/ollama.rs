@@ -27,8 +27,7 @@ impl Backend for OllamaBackend {
         &self,
         prompt: &str,
         max_tokens: u32,
-        mut on_token: impl FnMut(String) + Send,
-    ) -> Result<()> {
+    ) -> Result<String> {
         debug!("Ollama complete: model={}", self.model);
 
         let body = json!({
@@ -49,6 +48,7 @@ impl Backend for OllamaBackend {
 
         use futures_util::StreamExt;
         let mut stream = response.bytes_stream();
+        let mut result = String::new();
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
@@ -58,7 +58,7 @@ impl Backend for OllamaBackend {
                 if line.is_empty() { continue; }
                 if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
                     if let Some(token) = event["response"].as_str() {
-                        on_token(token.to_string());
+                        result.push_str(token);
                     }
                     if event["done"].as_bool().unwrap_or(false) {
                         break;
@@ -67,6 +67,6 @@ impl Backend for OllamaBackend {
             }
         }
 
-        Ok(())
+        Ok(result)
     }
 }

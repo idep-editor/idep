@@ -85,11 +85,7 @@ impl CompletionEngine {
             self.fim_tokens.middle,
         );
 
-        let mut result = String::new();
-        self.backend.complete(&prompt, req.max_tokens, |token| {
-            result.push_str(&token);
-        }).await?;
-
-        Ok(CompletionResponse { text: result })
+        let text = self.backend.complete(&prompt, req.max_tokens).await?;
+        Ok(CompletionResponse { text })
     }
 }

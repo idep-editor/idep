@@ -49,4 +49,4 @@ toml         = "0.8"
 dirs         = "5"
 
 # WASM plugin runtime
-wasmtime     = { version = "21", optional = true }
+wasmtime     = { version = "21" }
