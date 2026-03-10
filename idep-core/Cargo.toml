@@ -1,0 +1,22 @@
+[package]
+name        = "idep-core"
+description = "Editor core for Idep — buffer management, LSP orchestration, plugin host"
+
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+homepage.workspace   = true
+
+[dependencies]
+tokio.workspace     = true
+anyhow.workspace    = true
+thiserror.workspace = true
+tracing.workspace   = true
+serde.workspace     = true
+serde_json.workspace = true
+lsp-types.workspace = true
+
+# Text rope buffer
+ropey = "1.6"

@@ -1,0 +1,28 @@
+[package]
+name        = "idep-ai"
+description = "AI layer for Idep — completions, chat, and codebase indexing"
+keywords    = ["ide", "ai", "llm", "code-completion"]
+categories  = ["development-tools"]
+
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+homepage.workspace    = true
+
+[dependencies]
+tokio.workspace        = true
+reqwest.workspace      = true
+eventsource-stream.workspace = true
+serde.workspace        = true
+serde_json.workspace   = true
+anyhow.workspace       = true
+thiserror.workspace    = true
+tracing.workspace      = true
+tree-sitter.workspace  = true
+toml.workspace         = true
+dirs.workspace         = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }

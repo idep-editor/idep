@@ -1,0 +1,57 @@
+# Idep configuration example
+# Copy to ~/.idep/config.toml
+
+# ── AI Backend ─────────────────────────────────────────────────────────────
+
+# Option A: Ollama (local, no API key, recommended for WSL2)
+[ai]
+provider = "ollama"
+model    = "deepseek-coder:1.3b"   # or "codellama:7b", "starcoder2:3b"
+url      = "http://localhost:11434"
+
+# Option B: Anthropic Claude
+# [ai]
+# provider   = "anthropic"
+# api_key    = "sk-ant-..."
+# model      = "claude-sonnet-4-20250514"
+# max_tokens = 1024
+
+# Option C: HuggingFace Inference API
+# [ai]
+# provider  = "huggingface"
+# api_token = "hf_..."
+# model     = "bigcode/starcoder2-3b"
+
+# Option D: Any OpenAI-compatible endpoint (LiteLLM, LocalAI, Together, etc.)
+# [ai]
+# provider = "openai_compat"
+# url      = "http://localhost:8000"
+# model    = "gpt-3.5-turbo"
+# api_key  = "optional"
+
+# ── Completion ─────────────────────────────────────────────────────────────
+
+[completion]
+enabled     = true
+debounce_ms = 300       # wait this long after typing stops before firing
+max_tokens  = 60        # keep short for low latency
+fim_model   = "deepseek"  # fim token family: deepseek | starcoder | codellama
+
+# ── Indexer ────────────────────────────────────────────────────────────────
+
+[indexer]
+enabled     = true
+on_save     = true      # reindex changed file on every save
+ignore      = [
+    "target/",
+    "node_modules/",
+    ".git/",
+    "dist/",
+]
+
+# ── Editor ─────────────────────────────────────────────────────────────────
+
+[editor]
+tab_size    = 4
+insert_tabs = false
+font_size   = 14
