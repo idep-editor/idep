@@ -19,6 +19,7 @@ serde_json.workspace = true
 lsp-types.workspace = true
 toml.workspace      = true
 dirs.workspace      = true
+notify = "6"
 
 # Text rope buffer
 ropey = "1.6"

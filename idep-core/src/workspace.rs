@@ -1,7 +1,7 @@
-use anyhow::Result;
-use std::path::{Path, PathBuf};
-
 use crate::buffer::Buffer;
+use anyhow::Result;
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::path::{Path, PathBuf};
 
 pub struct Workspace {
     root: PathBuf,
@@ -31,6 +31,31 @@ impl Workspace {
         }
         std::fs::write(abs, buffer.to_string())?;
         Ok(())
+    }
+
+    /// Watch the workspace tree and invoke callback on file changes.
+    /// Caller must keep the returned watcher alive.
+    pub fn watch<F>(&self, mut on_change: F) -> notify::Result<RecommendedWatcher>
+    where
+        F: FnMut(&Path) + Send + 'static,
+    {
+        let root = self.root.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    match event.kind {
+                        EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
+                            for path in event.paths {
+                                on_change(path.as_path());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            })?;
+
+        watcher.watch(&root, RecursiveMode::Recursive)?;
+        Ok(watcher)
     }
 }
 

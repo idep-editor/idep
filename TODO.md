@@ -84,11 +84,11 @@
 - [x] `Workspace::open_file(path) -> Buffer`
 - [x] `Workspace::save_file(path, buffer)`
 - [x] Unit tests for all buffer operations
-- [ ] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
+- [x] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
 
 ### Website — v0.0.2
-- [ ] GitHub Sponsors badge: update from "Live at v0.0.2" → active link
-- [ ] README status table updated
+- [x] GitHub Sponsors badge: update from "Live at v0.0.2" → active link
+- [x] README status table updated
 
 ---
 
