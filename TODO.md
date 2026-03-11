@@ -21,6 +21,30 @@
 
 ## 🟡 Phase 1 — idep-ai: Make It Work (Weeks 1–2)
 
+### Config schema (do before wiring backends)
+
+The canonical config path is `~/.config/idep/config.toml` (XDG Base Dir spec).
+All backends are selected and configured through the `[ai]` table.
+
+```toml
+[ai]
+backend  = "ollama"          # ollama | anthropic | huggingface | openai
+model    = "codellama:13b"
+endpoint = "http://localhost:11434"   # optional — ollama / openai-compat only
+
+[ai.auth]
+api_key = "..."              # optional — anthropic / huggingface / openai only
+```
+
+- [ ] Define and document config schema in `config.example.toml` (committed to repo)
+- [ ] Implement `Config` struct with serde deserialization from TOML
+  - [ ] `[ai].backend` — enum: `ollama | anthropic | huggingface | openai`
+  - [ ] `[ai].model` — string
+  - [ ] `[ai].endpoint` — optional string (URL override for ollama / openai-compat)
+  - [ ] `[ai.auth].api_key` — optional string (env var fallback: `IDEP_API_KEY`)
+- [ ] Resolve config path: XDG `~/.config/idep/config.toml` with fallback to `~/.idep/config.toml`
+- [ ] Add `config.example.toml` to repo root with all four backend examples
+
 ### Backends
 - [x] Write integration test for `OllamaBackend` (requires local Ollama)
 - [ ] Write unit test for `AnthropicBackend` (mock HTTP server)
@@ -129,23 +153,24 @@
 
 ## 🔵 Phase 3 — Config & UX (Month 3)
 
-- [ ] Implement config loader: `~/.idep/config.toml` → typed structs
+- [ ] Implement config loader: `~/.config/idep/config.toml` → typed structs (schema defined in Phase 1)
 - [ ] Implement config validation with clear error messages
 - [ ] Add `idep --check-config` CLI command
 - [ ] Add `idep --version` CLI command
 - [ ] Add first-run wizard: detect Ollama, suggest model download
-- [ ] Add keybinding system (load from `~/.idep/keybindings.toml`)
+- [ ] Add keybinding system (load from `~/.config/idep/keybindings.toml`)
+- [ ] Hot-reload config on file change (switch backends without restarting)
 
 ---
 
 ## 🌐 Website (Parallel track)
 
-- [ ] Create `github.com/idep-editor/website`
-- [ ] Deploy placeholder to `idep.dev` (simple HTML, no framework)
-- [ ] Page: Landing (tagline, why Idep, comparison table)
-- [ ] Page: Docs (getting started, config reference)
-- [ ] Page: Roadmap (this TODO, public-facing version)
-- [ ] Set up GitHub Pages or Cloudflare Pages deployment
+- [x] Create `github.com/idep-editor/website`
+- [x] Deploy to `idep-website.vercel.app` (Astro + Tailwind, pending `idep.dev` DNS)
+- [x] Page: Landing (tagline, why Idep, interactive backend config switcher)
+- [ ] Page: Docs (getting started, full config reference)
+- [ ] Page: Roadmap (public-facing version of this TODO)
+- [ ] Set up `idep.dev` DNS → Vercel
 
 ---
 

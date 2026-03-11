@@ -53,23 +53,51 @@ cd idep
 cargo build
 
 # Configure — copy and edit
-cp config.example.toml ~/.idep/config.toml
+mkdir -p ~/.config/idep
+cp config.example.toml ~/.config/idep/config.toml
 ```
 
-### Minimal config (`~/.idep/config.toml`)
+### Config reference (`~/.config/idep/config.toml`)
 
+Switch AI backends by changing a single line. No restart required.
+
+**Ollama (local, no API key)**
 ```toml
-# Use local Ollama (no API key needed)
 [ai]
-provider = "ollama"
-model    = "deepseek-coder:1.3b"
-url      = "http://localhost:11434"
+backend  = "ollama"
+model    = "codellama:13b"
+endpoint = "http://localhost:11434"
+```
 
-# Or Anthropic
-# [ai]
-# provider = "anthropic"
-# api_key  = "sk-ant-..."
-# model    = "claude-sonnet-4-20250514"
+**Anthropic**
+```toml
+[ai]
+backend = "anthropic"
+model   = "claude-haiku-4-5-20251001"
+
+[ai.auth]
+api_key = "sk-ant-..."
+```
+
+**HuggingFace**
+```toml
+[ai]
+backend = "huggingface"
+model   = "bigcode/starcoder2-15b"
+
+[ai.auth]
+api_key = "hf_..."
+```
+
+**Any OpenAI-compatible endpoint** (GPT-4o, Groq, Together, LM Studio…)
+```toml
+[ai]
+backend  = "openai"
+model    = "gpt-4o-mini"
+endpoint = "https://api.groq.com/openai/v1"
+
+[ai.auth]
+api_key = "gsk_..."
 ```
 
 ---
