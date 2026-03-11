@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::{header::RETRY_AFTER, Client, Response, StatusCode};
 use serde_json::json;
-use std::time::Duration;
+use std::{any::Any, time::Duration};
 use tokio::time::sleep;
 use tracing::debug;
 
@@ -87,6 +87,10 @@ impl Backend for OpenAiCompatBackend {
             cloud_dependent: true,
             requires_auth: self.api_key.is_some(),
         }
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
     }
 
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {

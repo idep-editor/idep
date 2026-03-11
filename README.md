@@ -7,6 +7,7 @@
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org)
 [![CI](https://github.com/idep-editor/idep/actions/workflows/ci.yml/badge.svg)](https://github.com/idep-editor/idep/actions/workflows/ci.yml)
 [![Build status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/idep-editor/idep/actions)
+[![Sponsor](https://img.shields.io/github/sponsors/idep-editor)](https://github.com/sponsors/idep-editor)
 
 > ⚠️ **Pre-alpha — no release binary yet.**  
 > The AI backend layer compiles and is tested. The editor UI does not exist yet.  
@@ -137,13 +138,12 @@ api_key = "gsk_..."
 
 | Component | Status |
 |---|---|
-| `idep-ai` backends | 🟡 In progress |
-| `idep-ai` completion | 🟡 In progress |
-| `idep-ai` chat | 🟡 In progress |
-| `idep-ai` indexer | 🔴 Planned |
-| `idep-core` | 🔴 Planned |
-| `idep-lsp` | 🔴 Planned |
-| `idep-plugin` | 🔴 Planned |
+| `idep-ai` backends | ✅ Complete (v0.0.1) |
+| `idep-ai` completion | ✅ Complete (v0.0.2) |
+| `idep-ai` chat | ✅ Complete (v0.0.2) |
+| `idep-core` buffer | ✅ Complete (v0.0.2) |
+| `idep-core` workspace | ✅ Complete (v0.0.2) |
+| `idep-lsp` bridge | ✅ Complete (v0.0.2) |
 
 ---
 

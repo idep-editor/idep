@@ -11,6 +11,7 @@ pub mod openai_compat;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 /// A single streaming token from the backend
 pub type Token = String;
@@ -70,6 +71,9 @@ pub trait Backend: Send + Sync {
 
     /// Return static metadata about this backend configuration.
     fn info(&self) -> BackendInfo;
+
+    /// Downcast support for backend-specific functionality
+    fn as_any(&self) -> &(dyn Any + Send + Sync);
 }
 
 /// Construct the right backend from config

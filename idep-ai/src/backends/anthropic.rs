@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::{header::RETRY_AFTER, Client, Response, StatusCode};
 use serde_json::json;
-use std::time::Duration;
+use std::{any::Any, time::Duration};
 use tokio::time::sleep;
 use tracing::debug;
 
@@ -106,10 +106,14 @@ impl Backend for AnthropicBackend {
         super::BackendInfo {
             name: "anthropic",
             version: None,
-            endpoint: format!("{}/v1", self.base_url),
+            endpoint: self.base_url.clone(),
             cloud_dependent: true,
             requires_auth: true,
         }
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
     }
 
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {

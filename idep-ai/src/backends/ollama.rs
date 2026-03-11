@@ -5,6 +5,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::{Client, Response, StatusCode};
 use serde_json::json;
+use std::any::Any;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::debug;
@@ -44,6 +45,10 @@ impl Backend for OllamaBackend {
         }
     }
 
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("Ollama complete: model={}", self.model);
 
@@ -78,6 +83,62 @@ impl Backend for OllamaBackend {
                 if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
                     if let Some(token) = event["response"].as_str() {
                         result.push_str(token);
+                    }
+                    if event["done"].as_bool().unwrap_or(false) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+impl OllamaBackend {
+    pub async fn stream_completion<F>(
+        &self,
+        prompt: &str,
+        max_tokens: u32,
+        mut on_token: F,
+    ) -> Result<String>
+    where
+        F: FnMut(&str) + Send,
+    {
+        debug!("Ollama stream: model={}", self.model);
+
+        let body = json!({
+            "model":  self.model,
+            "prompt": prompt,
+            "stream": true,
+            "options": {
+                "num_predict": max_tokens,
+            }
+        });
+
+        let request = self
+            .client
+            .post(format!("{}/api/generate", self.url))
+            .json(&body);
+
+        let response = self.send_with_retry(request).await?.error_for_status()?;
+
+        use futures_util::StreamExt;
+        let mut stream = response.bytes_stream();
+        let mut result = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            let text = String::from_utf8_lossy(&chunk);
+
+            for line in text.lines() {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
+                    if let Some(token) = event["response"].as_str() {
+                        result.push_str(token);
+                        on_token(token);
                     }
                     if event["done"].as_bool().unwrap_or(false) {
                         break;

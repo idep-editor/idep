@@ -65,32 +65,30 @@
 > 📣 GitHub Sponsors goes live (quiet, no announcement)
 
 ### `idep-ai` — Completion
-- [ ] Wire `CompletionEngine` → `llm-ls` LSP bridge
-- [ ] Debounce logic (configurable, default 300ms)
-- [ ] Stop-sequence handling (don't continue past function end)
-- [ ] FIM token validation: DeepSeek · StarCoder · CodeLlama
-- [ ] Benchmark: keypress → first token latency
+- [x] Wire `CompletionEngine` → `llm-ls` LSP bridge
+- [x] Debounce logic (configurable, default 300ms)
+- [x] Stop-sequence handling (don't continue past function end)
+- [x] FIM token validation: DeepSeek · StarCoder · CodeLlama
+- [x] Benchmark: keypress → first token latency
 
-### `idep-ai` — Chat
-- [ ] Native message arrays for Anthropic (replace `build_prompt()`)
-- [ ] Context window management (truncate history near limit)
-- [ ] `ChatSession::export()` — serialize to JSON
-- [ ] Streaming token callback restored to `send()`
+### `idep-ai` — Chat (Ollama-only scope)
+- [x] Streaming token callback restored to `send()` — required for Ollama completions
+- [x] Debounce wired through to chat context (configurable, default 300ms)
 
 ### `idep-core` — Buffer basics
-- [ ] `Buffer::insert(pos, text)`
-- [ ] `Buffer::delete(range)`
-- [ ] `Buffer::lines() -> impl Iterator`
-- [ ] `Buffer::to_string()`
-- [ ] Cursor position tracking
-- [ ] `Workspace::open_file(path) -> Buffer`
-- [ ] `Workspace::save_file(path, buffer)`
-- [ ] Unit tests for all buffer operations
-- [ ] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
+- [x] `Buffer::insert(pos, text)`
+- [x] `Buffer::delete(range)`
+- [x] `Buffer::lines() -> impl Iterator`
+- [x] `Buffer::to_string()`
+- [x] Cursor position tracking
+- [x] `Workspace::open_file(path) -> Buffer`
+- [x] `Workspace::save_file(path, buffer)`
+- [x] Unit tests for all buffer operations
+- [x] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
 
 ### Website — v0.0.2
-- [ ] GitHub Sponsors badge: update from "Live at v0.0.2" → active link
-- [ ] README status table updated
+- [x] GitHub Sponsors badge: update from "Live at v0.0.2" → active link
+- [x] README status table updated
 
 ---
 
@@ -123,6 +121,11 @@
 
 ## 🔴 v0.1.0-alpha — Usable for Rust Editing
 > Basic Rust editing with AI · **Target: Month 2**
+
+### `idep-ai` — Chat (all backends)
+- [ ] Native message arrays for Anthropic (replace `build_prompt()`)
+- [ ] Context window management (truncate history near limit)
+- [ ] `ChatSession::export()` — serialize to JSON
 
 ### Release gate
 - [ ] `cargo check --all` passes
