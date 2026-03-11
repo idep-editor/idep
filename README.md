@@ -20,10 +20,10 @@ Think in code. Own your tools.
 | Runtime | Electron (VS Code fork) | Native (GPUI) | Electron (VS Code fork) | **Native (Rust)** |
 | License | Proprietary | AGPL-3 | Proprietary | **Apache 2.0** |
 | AI paradigm | Inline assist | Inline assist | **Agent orchestration** | **Precise completion + RAG** |
-| AI backends | BYOK (cloud-locked models) | Anthropic, OpenAI, Ollama | Gemini-first + Claude/GPT | **Any — no middleman** |
-| Codebase RAG | Cloud-indexed | ❌ | ❌ | **✅ local, in-process** |
+| AI backends | BYOK (cloud-locked models) | Multi-provider | Gemini-first + Claude/GPT | **Any — no middleman** |
+| Codebase RAG | Local index, cloud inference | ❌ | ❌ | **✅ fully in-process** |
 | Cloud dependency | Moderate | Low | **Hard (Google account)** | **None** |
-| RAM floor | ~8GB+ | ~4GB | 16GB recommended | **~2GB target** |
+| RAM floor | 4–8GB | ~4GB | 16GB recommended | **~2GB target** |
 | WSL2 / Linux | Good | Good | Okay | **First-class** |
 | Self-hostable | Enterprise only | Partial | ❌ | **✅ fully** |
 | Open source | ❌ | AGPL-3 | ❌ | **Apache 2.0** |
