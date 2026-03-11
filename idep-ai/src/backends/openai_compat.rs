@@ -61,7 +61,7 @@ impl OpenAiCompatBackend {
 
                     return Err(anyhow!("request failed with status {}", r.status()));
                 }
-                Err(e) if attempt + 1 < MAX_RETRIES => {
+                Err(_e) if attempt + 1 < MAX_RETRIES => {
                     sleep(Duration::from_millis(BASE_DELAY_MS * 2u64.pow(attempt))).await;
                     continue;
                 }
