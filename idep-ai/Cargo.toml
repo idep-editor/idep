@@ -29,3 +29,4 @@ walkdir                = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+httpmock = "0.7"

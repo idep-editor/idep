@@ -22,7 +22,7 @@
 ## 🟡 Phase 1 — idep-ai: Make It Work (Weeks 1–2)
 
 ### Backends
-- [ ] Write integration test for `OllamaBackend` (requires local Ollama)
+- [x] Write integration test for `OllamaBackend` (requires local Ollama)
 - [ ] Write unit test for `AnthropicBackend` (mock HTTP server)
 - [ ] Write unit test for `HuggingFaceBackend` (mock HTTP server)
 - [ ] Write unit test for `OpenAiCompatBackend` (mock HTTP server)
