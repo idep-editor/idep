@@ -9,28 +9,34 @@ use serde_json::json;
 use tracing::debug;
 
 pub struct OpenAiCompatBackend {
-    client:  Client,
-    url:     String,
+    client: Client,
+    url: String,
     api_key: Option<String>,
-    model:   String,
+    model: String,
 }
 
 impl OpenAiCompatBackend {
     pub fn new(url: String, api_key: Option<String>, model: String) -> Self {
-        Self { client: Client::new(), url, api_key, model }
+        Self {
+            client: Client::new(),
+            url,
+            api_key,
+            model,
+        }
     }
 }
 
 #[async_trait]
 impl Backend for OpenAiCompatBackend {
-    fn name(&self) -> &str { "openai_compat" }
+    fn name(&self) -> &str {
+        "openai_compat"
+    }
 
-    async fn complete(
-        &self,
-        prompt: &str,
-        max_tokens: u32,
-    ) -> Result<String> {
-        debug!("OpenAI-compat complete: model={} url={}", self.model, self.url);
+    async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
+        debug!(
+            "OpenAI-compat complete: model={} url={}",
+            self.model, self.url
+        );
 
         let body = json!({
             "model": self.model,
@@ -41,7 +47,8 @@ impl Backend for OpenAiCompatBackend {
             ]
         });
 
-        let mut req = self.client
+        let mut req = self
+            .client
             .post(format!("{}/v1/chat/completions", self.url))
             .json(&body);
 
@@ -65,7 +72,9 @@ impl Backend for OpenAiCompatBackend {
                 buffer = buffer[pos + 1..].to_string();
 
                 if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" { break; }
+                    if data == "[DONE]" {
+                        break;
+                    }
                     if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
                         if let Some(text) = event
                             .pointer("/choices/0/delta/content")

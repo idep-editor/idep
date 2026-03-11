@@ -8,9 +8,9 @@ use serde_json::json;
 use tracing::debug;
 
 pub struct AnthropicBackend {
-    client:     Client,
-    api_key:    String,
-    model:      String,
+    client: Client,
+    api_key: String,
+    model: String,
     max_tokens: u32,
 }
 
@@ -27,13 +27,11 @@ impl AnthropicBackend {
 
 #[async_trait]
 impl Backend for AnthropicBackend {
-    fn name(&self) -> &str { "anthropic" }
+    fn name(&self) -> &str {
+        "anthropic"
+    }
 
-    async fn complete(
-        &self,
-        prompt: &str,
-        max_tokens: u32,
-    ) -> Result<String> {
+    async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("Anthropic complete: model={}", self.model);
 
         let body = json!({
@@ -45,7 +43,8 @@ impl Backend for AnthropicBackend {
             ]
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -71,12 +70,11 @@ impl Backend for AnthropicBackend {
                 buffer = buffer[pos + 1..].to_string();
 
                 if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" { break; }
+                    if data == "[DONE]" {
+                        break;
+                    }
                     if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(text) = event
-                            .pointer("/delta/text")
-                            .and_then(|v| v.as_str())
-                        {
+                        if let Some(text) = event.pointer("/delta/text").and_then(|v| v.as_str()) {
                             result.push_str(text);
                         }
                     }

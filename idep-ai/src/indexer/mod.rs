@@ -13,11 +13,11 @@ use std::path::{Path, PathBuf};
 /// A chunk of source code with its provenance
 #[derive(Debug, Clone)]
 pub struct CodeChunk {
-    pub file:    PathBuf,
+    pub file: PathBuf,
     pub content: String,
     pub start_line: usize,
-    pub end_line:   usize,
-    pub kind:    ChunkKind,
+    pub end_line: usize,
+    pub kind: ChunkKind,
 }
 
 #[derive(Debug, Clone)]
@@ -33,16 +33,16 @@ pub enum ChunkKind {
 /// Query result from the index
 #[derive(Debug)]
 pub struct IndexResult {
-    pub chunk:    CodeChunk,
-    pub score:    f32,
+    pub chunk: CodeChunk,
+    pub score: f32,
 }
 
 /// The codebase indexer
-/// 
+///
 /// NOTE: Embedding and vector store integration (fastembed-rs + usearch)
 /// will be added in Phase 2. This skeleton defines the interface.
 pub struct Indexer {
-    root:   PathBuf,
+    root: PathBuf,
     chunks: Vec<CodeChunk>,
 }
 
@@ -73,15 +73,17 @@ impl Indexer {
     }
 
     /// Retrieve top-K chunks relevant to the query string
-    /// 
+    ///
     /// Phase 1: naive keyword matching
     /// Phase 2: replace with vector similarity (fastembed-rs + usearch)
     pub fn query(&self, query: &str, top_k: usize) -> Vec<&CodeChunk> {
         let query_lower = query.to_lowercase();
-        let mut scored: Vec<(&CodeChunk, usize)> = self.chunks
+        let mut scored: Vec<(&CodeChunk, usize)> = self
+            .chunks
             .iter()
             .map(|c| {
-                let score = c.content
+                let score = c
+                    .content
                     .to_lowercase()
                     .split_whitespace()
                     .filter(|w| query_lower.contains(w))
@@ -102,15 +104,19 @@ impl Indexer {
             return String::new();
         }
 
-        results.iter().map(|c| {
-            format!(
-                "// {} (lines {}–{})\n{}",
-                c.file.display(),
-                c.start_line,
-                c.end_line,
-                c.content
-            )
-        }).collect::<Vec<_>>().join("\n\n")
+        results
+            .iter()
+            .map(|c| {
+                format!(
+                    "// {} (lines {}–{})\n{}",
+                    c.file.display(),
+                    c.start_line,
+                    c.end_line,
+                    c.content
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
     }
 }
 
@@ -159,7 +165,9 @@ fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
             end_line: end,
             kind: ChunkKind::Other,
         });
-        if end == lines.len() { break; }
+        if end == lines.len() {
+            break;
+        }
         i += chunk_size - overlap;
     }
 

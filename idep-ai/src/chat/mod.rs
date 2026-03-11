@@ -14,29 +14,38 @@ pub enum Role {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
-    pub role:    Role,
+    pub role: Role,
     pub content: String,
 }
 
 impl ChatMessage {
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: Role::User, content: content.into() }
+        Self {
+            role: Role::User,
+            content: content.into(),
+        }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: content.into() }
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+        }
     }
 
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: Role::System, content: content.into() }
+        Self {
+            role: Role::System,
+            content: content.into(),
+        }
     }
 }
 
 /// A stateful chat session
 pub struct ChatSession {
-    backend:  Box<dyn Backend>,
-    history:  Vec<ChatMessage>,
-    system:   String,
+    backend: Box<dyn Backend>,
+    history: Vec<ChatMessage>,
+    system: String,
 }
 
 impl ChatSession {
@@ -46,7 +55,8 @@ impl ChatSession {
             history: Vec::new(),
             system: "You are Idep, an intelligent coding assistant. \
                      You have deep knowledge of the current codebase. \
-                     Respond concisely. Prefer code over prose.".into(),
+                     Respond concisely. Prefer code over prose."
+                .into(),
         }
     }
 
@@ -54,17 +64,13 @@ impl ChatSession {
     pub fn set_context(&mut self, context: &str) {
         self.system = format!(
             "You are Idep, an intelligent coding assistant.\n\
-             Codebase context:\n{}\n\n\
-             Respond concisely. Prefer code over prose.",
-            context
+             Codebase context:\n{context}\n\n\
+             Respond concisely. Prefer code over prose."
         );
     }
 
     /// Send a user message and return the response
-    pub async fn send(
-        &mut self,
-        message: &str,
-    ) -> Result<String> {
+    pub async fn send(&mut self, message: &str) -> Result<String> {
         self.history.push(ChatMessage::user(message));
 
         // Build prompt from full history
@@ -86,9 +92,9 @@ impl ChatSession {
         let mut prompt = format!("System: {}\n\n", self.system);
         for msg in &self.history {
             let role = match msg.role {
-                Role::User      => "Human",
+                Role::User => "Human",
                 Role::Assistant => "Assistant",
-                Role::System    => "System",
+                Role::System => "System",
             };
             prompt.push_str(&format!("{}: {}\n", role, msg.content));
         }

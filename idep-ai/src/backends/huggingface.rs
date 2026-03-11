@@ -7,30 +7,32 @@ use reqwest::Client;
 use tracing::debug;
 
 pub struct HuggingFaceBackend {
-    client:    Client,
+    client: Client,
     api_token: String,
-    model:     String,
-    endpoint:  String,
+    model: String,
+    endpoint: String,
 }
 
 impl HuggingFaceBackend {
     pub fn new(api_token: String, model: String, endpoint: Option<String>) -> Self {
-        let endpoint = endpoint.unwrap_or_else(||
-            format!("https://api-inference.huggingface.co/models/{}", model)
-        );
-        Self { client: Client::new(), api_token, model, endpoint }
+        let endpoint = endpoint
+            .unwrap_or_else(|| format!("https://api-inference.huggingface.co/models/{model}"));
+        Self {
+            client: Client::new(),
+            api_token,
+            model,
+            endpoint,
+        }
     }
 }
 
 #[async_trait]
 impl Backend for HuggingFaceBackend {
-    fn name(&self) -> &str { "huggingface" }
+    fn name(&self) -> &str {
+        "huggingface"
+    }
 
-    async fn complete(
-        &self,
-        prompt: &str,
-        max_tokens: u32,
-    ) -> Result<String> {
+    async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("HuggingFace complete: model={}", self.model);
 
         use serde_json::json;
@@ -42,7 +44,8 @@ impl Backend for HuggingFaceBackend {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.endpoint)
             .bearer_auth(&self.api_token)
             .json(&body)

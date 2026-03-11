@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 /// FIM token configuration per model family
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FimTokens {
-    pub prefix: String,  // inserted before the code prefix
-    pub suffix: String,  // inserted before the code suffix
-    pub middle: String,  // inserted at the cursor — model fills here
+    pub prefix: String, // inserted before the code prefix
+    pub suffix: String, // inserted before the code suffix
+    pub middle: String, // inserted at the cursor — model fills here
 }
 
 impl FimTokens {
@@ -65,13 +65,16 @@ pub struct CompletionResponse {
 
 /// Completion engine — wraps a backend with FIM prompt construction
 pub struct CompletionEngine {
-    backend:    Box<dyn Backend>,
+    backend: Box<dyn Backend>,
     fim_tokens: FimTokens,
 }
 
 impl CompletionEngine {
     pub fn new(backend: Box<dyn Backend>, fim_tokens: FimTokens) -> Self {
-        Self { backend, fim_tokens }
+        Self {
+            backend,
+            fim_tokens,
+        }
     }
 
     /// Build the FIM prompt and run completion
