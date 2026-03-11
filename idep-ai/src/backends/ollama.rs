@@ -56,8 +56,10 @@ impl Backend for OllamaBackend {
             "model":  self.model,
             "prompt": prompt,
             "stream": true,
+            "raw": true,
             "options": {
                 "num_predict": max_tokens,
+                "temperature": 0.0,
             }
         });
 
@@ -111,8 +113,10 @@ impl OllamaBackend {
             "model":  self.model,
             "prompt": prompt,
             "stream": true,
+            "raw": true,
             "options": {
                 "num_predict": max_tokens,
+                "temperature": 0.0,
             }
         });
 
