@@ -1074,6 +1074,7 @@ name = "idep-lsp"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "idep-ai",
  "jsonrpc-core",
  "lsp-types",
  "serde",

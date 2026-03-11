@@ -65,7 +65,7 @@
 > 📣 GitHub Sponsors goes live (quiet, no announcement)
 
 ### `idep-ai` — Completion
-- [ ] Wire `CompletionEngine` → `llm-ls` LSP bridge
+- [x] Wire `CompletionEngine` → `llm-ls` LSP bridge
 - [ ] Debounce logic (configurable, default 300ms)
 - [ ] Stop-sequence handling (don't continue past function end)
 - [ ] FIM token validation: DeepSeek · StarCoder · CodeLlama
