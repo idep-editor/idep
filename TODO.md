@@ -2,7 +2,7 @@
 
 > Track: https://github.com/idep-editor/idep  
 > Domain: idep.dev  
-> Tagline: *Think in code.*
+> Tagline: *Think in code. Own your tools.*
 
 ---
 

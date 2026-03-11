@@ -18,7 +18,7 @@ Think in code. Own your tools.
 | | Windsurf / Cursor | Zed | Google Antigravity | **Idep** |
 |---|---|---|---|---|
 | Runtime | Electron (VS Code fork) | Native (GPUI) | Electron (VS Code fork) | **Native (Rust)** |
-| License | Proprietary | AGPL-3 | Proprietary | **Apache 2.0** |
+| License | Proprietary | GPL-3 / AGPL-3 | Proprietary | **Apache 2.0** |
 | AI paradigm | Inline assist | Inline assist | **Agent orchestration** | **Precise completion + RAG** |
 | AI backends | BYOK (cloud-locked models) | Multi-provider | Gemini-first + Claude/GPT | **Any — no middleman** |
 | Codebase RAG | Local index, cloud inference | ❌ | ❌ | **✅ fully in-process** |
@@ -42,6 +42,8 @@ Powerful for high-level product work. Requires cloud. Requires trust. Requires G
 You remain the thinker. The tool disappears. Your codebase never leaves your machine.
 
 Idep is for developers who want thought-level control, not agent-level delegation.
+Your codebase index runs in-process — not just locally, but never touching a network
+path even for embedding. That's a sharper claim than any other tool in this table.
 
 ---
 
