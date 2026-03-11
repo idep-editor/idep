@@ -1,0 +1,72 @@
+name: Claude PR Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    if: |
+      github.event.issue.pull_request != null && 
+      contains(github.event.comment.body, '@claude') &&
+      secrets.ANTHROPIC_API_KEY != ''
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    env:
+      PR_NUMBER: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MODEL: claude-sonnet-4-20250514
+      MAX_TOKENS: 4096
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch PR diff (unified, max 15000 chars)
+        id: diff
+        run: |
+          gh api repos/$REPO/pulls/$PR_NUMBER \
+            -H "Accept: application/vnd.github.v3.diff" \
+            > /tmp/pr.diff
+          # Truncate to keep prompt manageable
+          head -c 15000 /tmp/pr.diff > /tmp/pr_truncated.diff
+
+      - name: Build prompt with CLAUDE.md context
+        id: prompt
+        run: |
+          {
+            cat CLAUDE.md
+            echo ""
+            echo "Review the following diff:"
+          } > /tmp/prompt.txt
+          echo "prompt=/tmp/prompt.txt" >> $GITHUB_OUTPUT
+
+      - name: Call Anthropic API for review
+        id: review
+        run: |
+          PROMPT=$(cat /tmp/prompt.txt)
+          DIFF=$(cat /tmp/pr_truncated.diff)
+          BODY=$(jq -n \
+            --arg model "$MODEL" \
+            --argjson max_tokens "$MAX_TOKENS" \
+            --arg prompt "$PROMPT" \
+            --arg diff "$DIFF" \
+            '{model: $model, max_tokens: $max_tokens, messages: [{role: "user", content: ($prompt + "\n\n" + $diff)}]}')
+          
+          RESPONSE=$(curl -sf https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "content-type: application/json" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$BODY" | jq -r '.content[0].text // "API call failed"')
+          
+          echo "response<<'EOF'" >> $GITHUB_OUTPUT
+          echo "$RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post review comment
+        run: |
+          gh api repos/$REPO/issues/$PR_NUMBER/comments \
+            -f body="Claude review:\n\n${{ steps.review.outputs.response }}"
