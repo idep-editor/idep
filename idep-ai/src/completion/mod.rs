@@ -71,6 +71,10 @@ mod tests {
                 requires_auth: false,
             }
         }
+
+        fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) {
+            self
+        }
     }
 
     async fn assert_fim_tokens(tokens: FimTokens) {
@@ -130,6 +134,10 @@ mod tests {
                 cloud_dependent: false,
                 requires_auth: false,
             }
+        }
+
+        fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) {
+            self
         }
     }
 

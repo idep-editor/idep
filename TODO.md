@@ -72,8 +72,8 @@
 - [x] Benchmark: keypress → first token latency
 
 ### `idep-ai` — Chat (Ollama-only scope)
-- [ ] Streaming token callback restored to `send()` — required for Ollama completions
-- [ ] Debounce wired through to chat context (configurable, default 300ms)
+- [x] Streaming token callback restored to `send()` — required for Ollama completions
+- [x] Debounce wired through to chat context (configurable, default 300ms)
 
 ### `idep-core` — Buffer basics
 - [ ] `Buffer::insert(pos, text)`
