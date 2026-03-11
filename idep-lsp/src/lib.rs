@@ -86,7 +86,6 @@ impl CompletionHandler {
 
         let resp = self.engine.complete(req).await?;
 
-        // Truncate label to first line for LSP menu rendering
         let label = resp.text.lines().next().unwrap_or("").to_string();
 
         // Convert to LSP CompletionItem
