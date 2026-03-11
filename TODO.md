@@ -49,9 +49,9 @@ api_key = "..."              # optional — anthropic / huggingface / openai onl
 
 ### Backends
 - [x] Write integration test for `OllamaBackend` (requires local Ollama)
-- [ ] Write unit test for `AnthropicBackend` (mock HTTP server)
-- [ ] Write unit test for `HuggingFaceBackend` (mock HTTP server)
-- [ ] Write unit test for `OpenAiCompatBackend` (mock HTTP server)
+- [x] Write unit test for `AnthropicBackend` (mock HTTP server)
+- [x] Write unit test for `HuggingFaceBackend` (mock HTTP server)
+- [x] Write unit test for `OpenAiCompatBackend` (mock HTTP server)
 - [ ] Add retry logic with exponential backoff to all backends
 - [ ] Add timeout configuration per backend
 - [ ] Handle rate limit errors (429) gracefully with retry-after

@@ -12,15 +12,31 @@ pub struct AnthropicBackend {
     api_key: String,
     model: String,
     max_tokens: u32,
+    base_url: String,
 }
 
 impl AnthropicBackend {
     pub fn new(api_key: String, model: String, max_tokens: u32) -> Self {
+        Self::new_with_base_url(
+            api_key,
+            model,
+            max_tokens,
+            "https://api.anthropic.com".into(),
+        )
+    }
+
+    pub fn new_with_base_url(
+        api_key: String,
+        model: String,
+        max_tokens: u32,
+        base_url: String,
+    ) -> Self {
         Self {
             client: Client::new(),
             api_key,
             model,
             max_tokens,
+            base_url,
         }
     }
 }
@@ -35,7 +51,7 @@ impl Backend for AnthropicBackend {
         super::BackendInfo {
             name: "anthropic",
             version: None,
-            endpoint: "https://api.anthropic.com/v1".into(),
+            endpoint: format!("{}/v1", self.base_url),
             cloud_dependent: true,
             requires_auth: true,
         }
@@ -55,7 +71,7 @@ impl Backend for AnthropicBackend {
 
         let response = self
             .client
-            .post("https://api.anthropic.com/v1/messages")
+            .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
