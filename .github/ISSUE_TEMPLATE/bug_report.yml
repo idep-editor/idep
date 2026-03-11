@@ -1,0 +1,72 @@
+name: "Bug report"
+description: "Report a bug in Idep"
+labels: [bug]
+title: "[bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please provide enough detail to reproduce.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened? What did you expect?
+      placeholder: "The issue is..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: Steps to Reproduce
+      description: Include minimal code or repo, commands run, and outputs.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: "What should happen"
+
+  - type: input
+    id: actual
+    attributes:
+      label: Actual Behavior
+      placeholder: "What actually happened"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: Paste relevant logs, stack traces, or screenshots.
+      render: shell
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      multiple: true
+      options:
+        - Linux
+        - macOS
+        - Windows
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Rust version (`rustc -V`), commit hash, and any local overrides.
+      placeholder: "rustc 1.xx.x (hash)\ncommit: <sha>\nconfig: ..."
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Anything else we should know?

@@ -8,13 +8,13 @@
 
 ## 🔴 Phase 0 — Repo Hygiene (Do First)
 
-- [ ] Confirm `cargo check --all` passes clean on main
-- [ ] Add `LICENSE` file (Apache 2.0)
-- [ ] Add `CONTRIBUTING.md`
-- [ ] Add `CHANGELOG.md` (start at `v0.1.0-dev`)
-- [ ] Update `.gitignore` — remove `Cargo.lock` exclusion (binaries should commit lockfile)
-- [ ] Add `rust-toolchain.toml` to pin Rust version
-- [ ] Register `github.com/idep-editor/website` repo (placeholder for idep.dev)
+- [x] Confirm `cargo check --all` passes clean on main
+- [x] Add `LICENSE` file (Apache 2.0)
+- [x] Add `CONTRIBUTING.md`
+- [x] Add `CHANGELOG.md` (start at `v0.1.0-dev`)
+- [x] Update `.gitignore` — remove `Cargo.lock` exclusion (binaries should commit lockfile)
+- [x] Add `rust-toolchain.toml` to pin Rust version
+- [x] Register `github.com/idep-editor/website` repo (placeholder for idep.dev)
 - [ ] File DJKI trademark — Class 42 (software) ← per Defensive Branding Framework
 
 ---
@@ -179,7 +179,7 @@
 
 | Milestone | Target | Criteria |
 |---|---|---|
-| `v0.0.1` — Compiles | Week 1 | `cargo build --all` passes, CI green |
+| `v0.0.1` | Week 1 | `cargo build --all` passes, CI green |
 | `v0.0.2` — AI works | Week 3 | Ollama completions working end-to-end |
 | `v0.0.3` — LSP works | Week 5 | rust-analyzer completions in buffer |
 | `v0.1.0-alpha` | Month 2 | Usable for basic Rust editing with AI |

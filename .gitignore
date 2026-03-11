@@ -3,7 +3,6 @@
 .env
 *.env.local
 ~/.idep/config.toml
-Cargo.lock   # library crates don't commit lockfile
 .DS_Store
 
 # IDE
