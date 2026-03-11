@@ -32,10 +32,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.2
+## [v0.0.2] — 2026-03-12
+
+### Added
+- `CompletionEngine` with FIM-aware prompt construction and stop-sequence truncation
+- FIM token support: DeepSeek, StarCoder, CodeLlama variants with model-specific stop sequences
+- DeepSeek stop sequences: `}\n`, `<｜fim▁end｜>`, `<｜end▁of▁sentence｜>`
+- `FimTokens::for_model()` — auto-select FIM tokens based on model name
+- Debounce logic with `CancellationToken` (configurable, default 300ms) in `CompletionHandler` and `ChatSession`
+- Stop-sequence truncation via `truncate_on_stop()` (post-processing fallback)
+- Streaming token callback on `ChatSession::send_streaming()`
+- `Buffer::insert`, `Buffer::delete`, `Buffer::lines`, `Buffer::Display` trait
+- Cursor position tracking in `Buffer`
+- `Workspace::open_file`, `Workspace::save_file`
+- File watcher with `notify-debouncer-mini` (100ms debounce)
+- Unit tests for all buffer operations
+- Live FIM completion integration test (`#[ignore]` — run with `cargo test -- --ignored`)
+- `CompletionItem::label` truncation to first line for LSP menu rendering
+
+### Fixed
+- Ollama backend: `raw: true` to bypass chat template and preserve FIM tokens
+- Ollama backend: `temperature: 0.0` for deterministic code completions
+- `Buffer::lines()` strips trailing newlines (editor API convention)
+- File watcher debounce prevents rapid-fire reindex on save
+- Claude workflow: use `jq --rawfile` for prompt/diff to prevent injection
+
+### Changed
+- `ChatSession::send()` → `ChatSession::send_streaming()` with token callback
+- `Buffer::to_string()` replaced with `Display` trait implementation
+
+---
+
+## [Unreleased] — v0.0.3
 
 ### Planned
-- `CompletionEngine` → `llm-ls` LSP bridge
-- Ollama completions end-to-end
-- `idep-core` buffer primitives
-- `ChatSession` streaming and export
+- LSP server integration (`textDocument/completion`)
+- End-to-end LSP completion flow

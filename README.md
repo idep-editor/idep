@@ -134,6 +134,31 @@ api_key = "gsk_..."
 
 ---
 
+## Examples
+
+### Ollama Smoketest
+
+Quick validation that the Ollama backend and FIM completion pipeline work end-to-end.
+
+```bash
+# Start Ollama (if not already running)
+ollama serve
+
+# In another terminal, run the smoketest
+bash example/ollama-smoketest.md
+```
+
+This validates:
+- ✅ Ollama connectivity and model availability
+- ✅ FIM token format (DeepSeek, StarCoder, CodeLlama)
+- ✅ Stop-sequence handling (prevents generation past function boundary)
+- ✅ Streaming token collection
+- ✅ Deterministic completion (`temperature: 0`)
+
+See [example/ollama-smoketest.md](example/ollama-smoketest.md) for detailed steps and troubleshooting.
+
+---
+
 ## Status
 
 | Component | Status |
