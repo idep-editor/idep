@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 /// FIM token configuration per model family
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FimTokens {
-    pub prefix: String, // inserted before the code prefix
-    pub suffix: String, // inserted before the code suffix
-    pub middle: String, // inserted at the cursor — model fills here
+    pub prefix: String,              // inserted before the code prefix
+    pub suffix: String,              // inserted before the code suffix
+    pub middle: String,              // inserted at the cursor — model fills here
+    pub stop_sequences: Vec<String>, // model-specific stop tokens for Ollama
 }
 
 impl FimTokens {
@@ -23,6 +24,11 @@ impl FimTokens {
             prefix: "<｜fim▁begin｜>".into(),
             suffix: "<｜fim▁end｜>".into(),
             middle: "<｜fim▁middle｜>".into(),
+            stop_sequences: vec![
+                "}\n".into(),
+                "<｜fim▁end｜>".into(),
+                "<｜end▁of▁sentence｜>".into(),
+            ],
         }
     }
 
@@ -32,6 +38,7 @@ impl FimTokens {
             prefix: "<fim_prefix>".into(),
             suffix: "<fim_suffix>".into(),
             middle: "<fim_middle>".into(),
+            stop_sequences: vec!["}\n".into()],
         }
     }
 
@@ -41,6 +48,7 @@ impl FimTokens {
             prefix: "▁<PRE>".into(),
             suffix: "▁<SUF>".into(),
             middle: "▁<MID>".into(),
+            stop_sequences: vec!["}\n".into()],
         }
     }
 
@@ -92,7 +100,14 @@ mod tests {
     }
 
     async fn assert_fim_tokens(tokens: FimTokens) {
-        let engine = CompletionEngine::new(Box::new(EchoBackend), tokens.clone());
+        // Create tokens without stop sequences for testing
+        let test_tokens = FimTokens {
+            prefix: tokens.prefix.clone(),
+            suffix: tokens.suffix.clone(),
+            middle: tokens.middle.clone(),
+            stop_sequences: vec![], // Disable stop sequences for this test
+        };
+        let engine = CompletionEngine::new(Box::new(EchoBackend), test_tokens);
         let req = CompletionRequest {
             prefix: "PRE".into(),
             suffix: "SUF".into(),
@@ -270,8 +285,15 @@ impl CompletionEngine {
         );
 
         let text = self.backend.complete(&prompt, req.max_tokens).await?;
-        let truncated = if let Some(stops) = &req.stop_sequences {
-            truncate_on_stop(&text, stops)
+
+        // Merge FIM model stop sequences with request stop sequences
+        let mut all_stops = self.fim_tokens.stop_sequences.clone();
+        if let Some(req_stops) = &req.stop_sequences {
+            all_stops.extend(req_stops.clone());
+        }
+
+        let truncated = if !all_stops.is_empty() {
+            truncate_on_stop(&text, &all_stops)
         } else {
             text
         };
