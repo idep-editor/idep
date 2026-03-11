@@ -71,11 +71,9 @@
 - [x] FIM token validation: DeepSeek · StarCoder · CodeLlama
 - [x] Benchmark: keypress → first token latency
 
-### `idep-ai` — Chat
-- [ ] Native message arrays for Anthropic (replace `build_prompt()`)
-- [ ] Context window management (truncate history near limit)
-- [ ] `ChatSession::export()` — serialize to JSON
-- [ ] Streaming token callback restored to `send()`
+### `idep-ai` — Chat (Ollama-only scope)
+- [ ] Streaming token callback restored to `send()` — required for Ollama completions
+- [ ] Debounce wired through to chat context (configurable, default 300ms)
 
 ### `idep-core` — Buffer basics
 - [ ] `Buffer::insert(pos, text)`
@@ -123,6 +121,11 @@
 
 ## 🔴 v0.1.0-alpha — Usable for Rust Editing
 > Basic Rust editing with AI · **Target: Month 2**
+
+### `idep-ai` — Chat (all backends)
+- [ ] Native message arrays for Anthropic (replace `build_prompt()`)
+- [ ] Context window management (truncate history near limit)
+- [ ] `ChatSession::export()` — serialize to JSON
 
 ### Release gate
 - [ ] `cargo check --all` passes
