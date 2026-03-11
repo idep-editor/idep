@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// FIM token configuration per model family
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FimTokens {
     pub prefix: String, // inserted before the code prefix
     pub suffix: String, // inserted before the code suffix
@@ -41,6 +41,20 @@ impl FimTokens {
             prefix: "▁<PRE>".into(),
             suffix: "▁<SUF>".into(),
             middle: "▁<MID>".into(),
+        }
+    }
+
+    /// Select FIM tokens based on model name
+    pub fn for_model(model: &str) -> Self {
+        if model.contains("deepseek") {
+            Self::deepseek()
+        } else if model.contains("starcoder") {
+            Self::starcoder()
+        } else if model.contains("codellama") {
+            Self::codellama()
+        } else {
+            // Default to DeepSeek for unknown models
+            Self::deepseek()
         }
     }
 }
@@ -113,6 +127,24 @@ mod tests {
         assert_fim_tokens(FimTokens::codellama()).await;
     }
 
+    #[test]
+    fn for_model_selects_correct_tokens() {
+        assert_eq!(
+            FimTokens::for_model("deepseek-coder:1.3b"),
+            FimTokens::deepseek()
+        );
+        assert_eq!(
+            FimTokens::for_model("starcoder2:7b"),
+            FimTokens::starcoder()
+        );
+        assert_eq!(
+            FimTokens::for_model("codellama:13b"),
+            FimTokens::codellama()
+        );
+        // Unknown models default to DeepSeek
+        assert_eq!(FimTokens::for_model("mistral:7b"), FimTokens::deepseek());
+    }
+
     struct DelayedBackend;
 
     #[async_trait]
@@ -154,6 +186,40 @@ mod tests {
 
         let (_resp, latency) = engine.complete_with_latency(req).await.unwrap();
         assert!(latency >= Duration::from_millis(50));
+    }
+
+    #[tokio::test]
+    #[ignore] // run with: cargo test -- --ignored
+    async fn live_fim_completion() {
+        // Requires live Ollama at http://localhost:11434 with deepseek-coder:1.3b
+        use crate::backends::ollama::OllamaBackend;
+
+        let backend = Box::new(OllamaBackend::new(
+            "http://localhost:11434".into(),
+            "deepseek-coder:1.3b".into(),
+        ));
+        let engine = CompletionEngine::new(backend, FimTokens::deepseek());
+
+        let req = CompletionRequest {
+            prefix: "fn add(a: i32, b: i32) -> i32 {\n".into(),
+            suffix: "\n}".into(),
+            language: "rust".into(),
+            max_tokens: 32,
+            stop_sequences: Some(vec!["}".into()]),
+        };
+
+        let resp = engine
+            .complete(req)
+            .await
+            .expect("live Ollama should respond");
+        // Verify response is non-empty (FIM is working; language varies by model)
+        assert!(!resp.text.is_empty(), "completion should not be empty");
+        // Verify stop-sequence was respected (no closing brace in response)
+        assert!(
+            !resp.text.contains("}"),
+            "completion should stop before closing brace, got: {}",
+            resp.text
+        );
     }
 }
 
