@@ -36,14 +36,14 @@ endpoint = "http://localhost:11434"   # optional — ollama / openai-compat only
 api_key = "..."              # optional — anthropic / huggingface / openai only
 ```
 
-- [ ] Define and document config schema in `config.example.toml` (committed to repo)
-- [ ] Implement `Config` struct with serde deserialization from TOML
-  - [ ] `[ai].backend` — enum: `ollama | anthropic | huggingface | openai`
-  - [ ] `[ai].model` — string
-  - [ ] `[ai].endpoint` — optional string (URL override for ollama / openai-compat)
-  - [ ] `[ai.auth].api_key` — optional string (env var fallback: `IDEP_API_KEY`)
-- [ ] Resolve config path: XDG `~/.config/idep/config.toml` with fallback to `~/.idep/config.toml`
-- [ ] Add `config.example.toml` to repo root with all four backend examples
+- [x] Define and document config schema in `config.example.toml` (committed to repo)
+- [x] Implement `Config` struct with serde deserialization from TOML
+  - [x] `[ai].backend` — enum: `ollama | anthropic | huggingface | openai`
+  - [x] `[ai].model` — string
+  - [x] `[ai].endpoint` — optional string (URL override for ollama / openai-compat)
+  - [x] `[ai.auth].api_key` — optional string (env var fallback: `IDEP_API_KEY`)
+- [x] Resolve config path: XDG `~/.config/idep/config.toml` with fallback to `~/.idep/config.toml`
+- [x] Add `config.example.toml` to repo root with all four backend examples
 
 ### Backends
 - [x] Write integration test for `OllamaBackend` (requires local Ollama)

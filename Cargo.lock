@@ -1045,12 +1045,14 @@ name = "idep-core"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "dirs",
  "lsp-types",
  "ropey",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "toml",
  "tracing",
 ]
 

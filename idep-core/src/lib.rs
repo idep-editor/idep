@@ -4,4 +4,5 @@
 // Long term: clean, well-documented editor primitives
 
 pub mod buffer;
+pub mod config;
 pub mod workspace;

@@ -1,6 +1,14 @@
 # Idep configuration
-# Copy to ~/.config/idep/config.toml and edit as needed.
+# Copy to ~/.config/idep/config.toml (preferred, XDG) or ~/.idep/config.toml
 # Docs: https://idep.dev/docs/config
+#
+# Schema (required fields):
+# [ai]
+# backend  = "ollama" | "anthropic" | "huggingface" | "openai"
+# model    = "<model-name>"
+# endpoint = "<url>" (optional: ollama / openai-compat only)
+# [ai.auth]
+# api_key  = "..." (optional: anthropic / huggingface / openai; env fallback IDEP_API_KEY)
 
 # ─── AI Backend ────────────────────────────────────────────────────────────────
 #
