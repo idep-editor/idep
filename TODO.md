@@ -76,14 +76,14 @@
 - [x] Debounce wired through to chat context (configurable, default 300ms)
 
 ### `idep-core` — Buffer basics
-- [ ] `Buffer::insert(pos, text)`
-- [ ] `Buffer::delete(range)`
-- [ ] `Buffer::lines() -> impl Iterator`
-- [ ] `Buffer::to_string()`
-- [ ] Cursor position tracking
+- [x] `Buffer::insert(pos, text)`
+- [x] `Buffer::delete(range)`
+- [x] `Buffer::lines() -> impl Iterator`
+- [x] `Buffer::to_string()`
+- [x] Cursor position tracking
 - [ ] `Workspace::open_file(path) -> Buffer`
 - [ ] `Workspace::save_file(path, buffer)`
-- [ ] Unit tests for all buffer operations
+- [x] Unit tests for all buffer operations
 - [ ] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
 
 ### Website — v0.0.2
