@@ -3,6 +3,15 @@
 > **I**ntegrated **D**evelopment **E**nvironment, **P**owered  
 > *idep* (Balinese) — Thought. Mind. Consciousness.
 
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org)
+[![CI](https://github.com/idep-editor/idep/actions/workflows/ci.yml/badge.svg)](https://github.com/idep-editor/idep/actions/workflows/ci.yml)
+[![Build status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/idep-editor/idep/actions)
+
+> ⚠️ **Pre-alpha — no release binary yet.**  
+> The AI backend layer compiles and is tested. The editor UI does not exist yet.  
+> Follow along or contribute — see [TODO.md](TODO.md) for what's next.
+
 A lightweight, Rust-native AI-powered IDE.  
 Built for developers who want speed, local-first AI, and full control —
 not another cloud platform that thinks for you.
@@ -26,7 +35,7 @@ Think in code. Own your tools.
 | RAM floor | 4–8GB | ~4GB | 16GB recommended | **~2GB target** |
 | WSL2 / Linux | Good | Good | Okay | **First-class** |
 | Self-hostable | Enterprise only | Partial | ❌ | **✅ fully** |
-| Open source | ❌ | AGPL-3 | ❌ | **Apache 2.0** |
+| Open source | ❌ | GPL-3 / AGPL-3 | ❌ | **Apache 2.0** |
 
 ---
 
@@ -131,8 +140,9 @@ api_key = "gsk_..."
 | `idep-ai` backends | 🟡 In progress |
 | `idep-ai` completion | 🟡 In progress |
 | `idep-ai` chat | 🟡 In progress |
-| `idep-ai` indexer | 🔴 Planned (Phase 2) |
+| `idep-ai` indexer | 🔴 Planned |
 | `idep-core` | 🔴 Planned |
+| `idep-lsp` | 🔴 Planned |
 | `idep-plugin` | 🔴 Planned |
 
 ---
@@ -161,4 +171,4 @@ Apache 2.0 — see [LICENSE](LICENSE)
 ---
 
 *Built in Bali 🌴 by [@SHA888](https://github.com/SHA888)*  
-*idep.dev*
+*[idep.dev](https://idep.dev)*
