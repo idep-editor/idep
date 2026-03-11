@@ -52,9 +52,9 @@ api_key = "..."              # optional — anthropic / huggingface / openai onl
 - [x] Write unit test for `AnthropicBackend` (mock HTTP server)
 - [x] Write unit test for `HuggingFaceBackend` (mock HTTP server)
 - [x] Write unit test for `OpenAiCompatBackend` (mock HTTP server)
-- [ ] Add retry logic with exponential backoff to all backends
-- [ ] Add timeout configuration per backend
-- [ ] Handle rate limit errors (429) gracefully with retry-after
+- [x] Add retry logic with exponential backoff to all backends
+- [x] Add timeout configuration per backend
+- [x] Handle rate limit errors (429) gracefully with retry-after
 
 ### Completion
 - [ ] Wire `CompletionEngine` → `llm-ls` LSP bridge
