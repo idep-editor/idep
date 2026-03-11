@@ -1,4 +1,5 @@
 use ropey::Rope;
+use std::fmt;
 use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,16 +50,15 @@ impl Buffer {
     }
 
     pub fn lines(&self) -> Vec<String> {
-        let mut lines: Vec<String> = self.rope.lines().map(|l| l.to_string()).collect();
-        if lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+        let mut lines: Vec<String> = self
+            .rope
+            .lines()
+            .map(|l| l.to_string().trim_end_matches('\n').to_string())
+            .collect();
+        if lines.last().map(|l: &String| l.is_empty()).unwrap_or(false) {
             lines.pop();
         }
         lines
-    }
-
-    #[allow(clippy::inherent_to_string)]
-    pub fn to_string(&self) -> String {
-        self.rope.to_string()
     }
 
     pub fn cursor(&self) -> Cursor {
@@ -78,6 +78,12 @@ impl Buffer {
 impl Default for Buffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl fmt::Display for Buffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.rope)
     }
 }
 
@@ -110,6 +116,16 @@ mod tests {
     fn lines_iterates_strings() {
         let buf = Buffer::with_text("a\nb\n");
         let lines = buf.lines();
-        assert_eq!(lines, vec!["a\n".to_string(), "b\n".to_string()]);
+        assert_eq!(lines, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn delete_on_empty_buffer_is_safe() {
+        let mut buf = Buffer::with_text("abc");
+        buf.delete(0..3);
+        assert_eq!(buf.to_string(), "");
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0);
+        assert_eq!(cursor.column, 0);
     }
 }

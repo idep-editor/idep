@@ -3,8 +3,11 @@
 use crate::backends::{ollama::OllamaBackend, Backend};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -49,6 +52,7 @@ pub struct ChatSession {
     history: Vec<ChatMessage>,
     system: String,
     debounce: Duration,
+    cancel_token: Arc<Mutex<Option<CancellationToken>>>,
 }
 
 impl ChatSession {
@@ -65,6 +69,7 @@ impl ChatSession {
                      Respond concisely. Prefer code over prose."
                 .into(),
             debounce,
+            cancel_token: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -78,20 +83,13 @@ impl ChatSession {
     }
 
     /// Send a user message and return the response
+    /// Delegates to send_streaming with a no-op callback to avoid code duplication
     pub async fn send(&mut self, message: &str) -> Result<String> {
-        self.history.push(ChatMessage::user(message));
-
-        // Build prompt from full history
-        let prompt = self.build_prompt();
-
-        sleep(self.debounce).await;
-
-        let response = self.backend.complete(&prompt, 2048).await?;
-        self.history.push(ChatMessage::assistant(&response));
-        Ok(response)
+        self.send_streaming(message, |_| {}).await
     }
 
     /// Send a user message and stream tokens to a callback if the backend supports it
+    /// Implements proper debounce: cancels pending requests when new ones arrive
     pub async fn send_streaming<F>(&mut self, message: &str, mut on_token: F) -> Result<String>
     where
         F: FnMut(&str) + Send,
@@ -100,7 +98,30 @@ impl ChatSession {
 
         let prompt = self.build_prompt();
 
-        sleep(self.debounce).await;
+        // Cancel any pending request from the previous call
+        {
+            let mut token_guard = self.cancel_token.lock().await;
+            if let Some(token) = token_guard.take() {
+                token.cancel();
+            }
+        }
+
+        // Create a new cancellation token for this request
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+        {
+            let mut token_guard = self.cancel_token.lock().await;
+            *token_guard = Some(token_clone);
+        }
+
+        // Wait for debounce duration or cancellation
+        tokio::select! {
+            _ = sleep(self.debounce) => {},
+            _ = token.cancelled() => {
+                // Request was cancelled by a newer one; return early
+                return Ok(String::new());
+            }
+        }
 
         // Try Ollama streaming first
         if let Some(ollama) = self.backend.as_any().downcast_ref::<OllamaBackend>() {

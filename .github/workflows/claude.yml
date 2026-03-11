@@ -47,13 +47,11 @@ jobs:
       - name: Call Anthropic API for review
         id: review
         run: |
-          PROMPT=$(cat /tmp/prompt.txt)
-          DIFF=$(cat /tmp/pr_truncated.diff)
           BODY=$(jq -n \
             --arg model "$MODEL" \
             --argjson max_tokens "$MAX_TOKENS" \
-            --arg prompt "$PROMPT" \
-            --arg diff "$DIFF" \
+            --rawfile prompt /tmp/prompt.txt \
+            --rawfile diff /tmp/pr_truncated.diff \
             '{model: $model, max_tokens: $max_tokens, messages: [{role: "user", content: ($prompt + "\n\n" + $diff)}]}')
           
           RESPONSE=$(curl -sf https://api.anthropic.com/v1/messages \
