@@ -66,10 +66,10 @@
 
 ### `idep-ai` — Completion
 - [x] Wire `CompletionEngine` → `llm-ls` LSP bridge
-- [ ] Debounce logic (configurable, default 300ms)
-- [ ] Stop-sequence handling (don't continue past function end)
-- [ ] FIM token validation: DeepSeek · StarCoder · CodeLlama
-- [ ] Benchmark: keypress → first token latency
+- [x] Debounce logic (configurable, default 300ms)
+- [x] Stop-sequence handling (don't continue past function end)
+- [x] FIM token validation: DeepSeek · StarCoder · CodeLlama
+- [x] Benchmark: keypress → first token latency
 
 ### `idep-ai` — Chat
 - [ ] Native message arrays for Anthropic (replace `build_prompt()`)

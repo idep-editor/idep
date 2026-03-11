@@ -6,6 +6,7 @@
 use crate::backends::Backend;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 /// FIM token configuration per model family
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -44,6 +45,110 @@ impl FimTokens {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct EchoBackend;
+
+    #[async_trait]
+    impl Backend for EchoBackend {
+        async fn complete(&self, prompt: &str, _max_tokens: u32) -> Result<String> {
+            Ok(prompt.to_string())
+        }
+
+        fn name(&self) -> &str {
+            "echo"
+        }
+
+        fn info(&self) -> crate::backends::BackendInfo {
+            crate::backends::BackendInfo {
+                name: "echo",
+                version: None,
+                endpoint: "local".into(),
+                cloud_dependent: false,
+                requires_auth: false,
+            }
+        }
+    }
+
+    async fn assert_fim_tokens(tokens: FimTokens) {
+        let engine = CompletionEngine::new(Box::new(EchoBackend), tokens.clone());
+        let req = CompletionRequest {
+            prefix: "PRE".into(),
+            suffix: "SUF".into(),
+            language: "rust".into(),
+            max_tokens: 32,
+            stop_sequences: None,
+        };
+
+        let resp = engine.complete(req).await.unwrap();
+        let expected = format!(
+            "{}{}{}{}{}",
+            tokens.prefix, "PRE", tokens.suffix, "SUF", tokens.middle
+        );
+        assert_eq!(resp.text, expected);
+        assert!(!tokens.prefix.is_empty());
+        assert!(!tokens.suffix.is_empty());
+        assert!(!tokens.middle.is_empty());
+    }
+
+    #[tokio::test]
+    async fn deepseek_fim_tokens_build_prompt() {
+        assert_fim_tokens(FimTokens::deepseek()).await;
+    }
+
+    #[tokio::test]
+    async fn starcoder_fim_tokens_build_prompt() {
+        assert_fim_tokens(FimTokens::starcoder()).await;
+    }
+
+    #[tokio::test]
+    async fn codellama_fim_tokens_build_prompt() {
+        assert_fim_tokens(FimTokens::codellama()).await;
+    }
+
+    struct DelayedBackend;
+
+    #[async_trait]
+    impl Backend for DelayedBackend {
+        async fn complete(&self, prompt: &str, _max_tokens: u32) -> Result<String> {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(prompt.to_string())
+        }
+
+        fn name(&self) -> &str {
+            "delayed"
+        }
+
+        fn info(&self) -> crate::backends::BackendInfo {
+            crate::backends::BackendInfo {
+                name: "delayed",
+                version: None,
+                endpoint: "local".into(),
+                cloud_dependent: false,
+                requires_auth: false,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn measures_latency_to_first_token() {
+        let engine = CompletionEngine::new(Box::new(DelayedBackend), FimTokens::deepseek());
+        let req = CompletionRequest {
+            prefix: "A".into(),
+            suffix: "B".into(),
+            language: "rust".into(),
+            max_tokens: 8,
+            stop_sequences: None,
+        };
+
+        let (_resp, latency) = engine.complete_with_latency(req).await.unwrap();
+        assert!(latency >= Duration::from_millis(50));
+    }
+}
+
 /// A request for inline completion at cursor position
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
@@ -55,6 +160,8 @@ pub struct CompletionRequest {
     pub language: String,
     /// Maximum tokens to generate
     pub max_tokens: u32,
+    /// Optional stop sequences (truncate on first occurrence)
+    pub stop_sequences: Option<Vec<String>>,
 }
 
 /// The result of a completion
@@ -89,6 +196,41 @@ impl CompletionEngine {
         );
 
         let text = self.backend.complete(&prompt, req.max_tokens).await?;
-        Ok(CompletionResponse { text })
+        let truncated = if let Some(stops) = &req.stop_sequences {
+            truncate_on_stop(&text, stops)
+        } else {
+            text
+        };
+
+        Ok(CompletionResponse { text: truncated })
+    }
+
+    /// Measure latency from call to first token (full response, since backend is non-streaming)
+    pub async fn complete_with_latency(
+        &self,
+        req: CompletionRequest,
+    ) -> Result<(CompletionResponse, Duration)> {
+        let start = Instant::now();
+        let resp = self.complete(req).await?;
+        let latency = start.elapsed();
+        Ok((resp, latency))
+    }
+}
+
+fn truncate_on_stop(text: &str, stops: &[String]) -> String {
+    let mut earliest = None;
+    for stop in stops {
+        if stop.is_empty() {
+            continue;
+        }
+        if let Some(idx) = text.find(stop) {
+            earliest = Some(earliest.map_or(idx, |cur: usize| cur.min(idx)));
+        }
+    }
+
+    if let Some(idx) = earliest {
+        text[..idx].to_string()
+    } else {
+        text.to_string()
     }
 }
