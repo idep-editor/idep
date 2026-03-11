@@ -81,8 +81,8 @@
 - [x] `Buffer::lines() -> impl Iterator`
 - [x] `Buffer::to_string()`
 - [x] Cursor position tracking
-- [ ] `Workspace::open_file(path) -> Buffer`
-- [ ] `Workspace::save_file(path, buffer)`
+- [x] `Workspace::open_file(path) -> Buffer`
+- [x] `Workspace::save_file(path, buffer)`
 - [x] Unit tests for all buffer operations
 - [ ] File watcher (`notify` crate) → trigger `Indexer::reindex_file` on save
 

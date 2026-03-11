@@ -22,3 +22,6 @@ dirs.workspace      = true
 
 # Text rope buffer
 ropey = "1.6"
+
+[dev-dependencies]
+tempfile = "3"
