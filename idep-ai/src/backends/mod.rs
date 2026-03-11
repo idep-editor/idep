@@ -15,6 +15,16 @@ use serde::{Deserialize, Serialize};
 /// A single streaming token from the backend
 pub type Token = String;
 
+/// Metadata returned by each backend for diagnostics and `idep --backends`.
+#[derive(Debug, Clone)]
+pub struct BackendInfo {
+    pub name: &'static str,
+    pub version: Option<String>, // e.g. model version if detectable
+    pub endpoint: String,        // resolved endpoint URL
+    pub cloud_dependent: bool,   // true if requires internet
+    pub requires_auth: bool,     // true if API key required
+}
+
 /// Backend configuration loaded from ~/.idep/config.toml
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "provider", rename_all = "lowercase")]
@@ -57,6 +67,9 @@ pub trait Backend: Send + Sync {
 
     /// Name for logging / debug
     fn name(&self) -> &str;
+
+    /// Return static metadata about this backend configuration.
+    fn info(&self) -> BackendInfo;
 }
 
 /// Construct the right backend from config

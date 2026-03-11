@@ -31,6 +31,16 @@ impl Backend for AnthropicBackend {
         "anthropic"
     }
 
+    fn info(&self) -> super::BackendInfo {
+        super::BackendInfo {
+            name: "anthropic",
+            version: None,
+            endpoint: "https://api.anthropic.com/v1".into(),
+            cloud_dependent: true,
+            requires_auth: true,
+        }
+    }
+
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("Anthropic complete: model={}", self.model);
 

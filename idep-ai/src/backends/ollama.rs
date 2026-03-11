@@ -29,6 +29,16 @@ impl Backend for OllamaBackend {
         "ollama"
     }
 
+    fn info(&self) -> super::BackendInfo {
+        super::BackendInfo {
+            name: "ollama",
+            version: None,
+            endpoint: self.url.clone(),
+            cloud_dependent: false,
+            requires_auth: false,
+        }
+    }
+
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("Ollama complete: model={}", self.model);
 

@@ -4,24 +4,44 @@
 > *idep* (Balinese) — Thought. Mind. Consciousness.
 
 A lightweight, Rust-native AI-powered IDE.  
-Built for developers who want speed, local-first AI, and full control.
+Built for developers who want speed, local-first AI, and full control —
+not another cloud platform that thinks for you.
 
 ```
-Think in code.
+Think in code. Own your tools.
 ```
 
 ---
 
 ## Why Idep?
 
-| | Windsurf / Cursor | Zed | **Idep** |
-|---|---|---|---|
-| Runtime | Electron (VS Code fork) | Native (GPUI) | **Native (Rust)** |
-| License | Proprietary | GPL-3 | **Apache 2.0** |
-| AI backends | BYOK for individuals; proprietary models cloud-only | Anthropic, OpenAI, Ollama | **Any backend, any plan — no middleman** |
-| Codebase RAG | Client-indexed, cloud-embedded | ❌ | **✅ fully in-process — embeddings never leave your machine** |
-| WSL2 / Linux | Good | Good | **First-class** |
-| Self-hostable | Enterprise plans only | Partial | **✅ fully — any plan** |
+| | Windsurf / Cursor | Zed | Google Antigravity | **Idep** |
+|---|---|---|---|---|
+| Runtime | Electron (VS Code fork) | Native (GPUI) | Electron (VS Code fork) | **Native (Rust)** |
+| License | Proprietary | AGPL-3 | Proprietary | **Apache 2.0** |
+| AI paradigm | Inline assist | Inline assist | **Agent orchestration** | **Precise completion + RAG** |
+| AI backends | BYOK (cloud-locked models) | Anthropic, OpenAI, Ollama | Gemini-first + Claude/GPT | **Any — no middleman** |
+| Codebase RAG | Cloud-indexed | ❌ | ❌ | **✅ local, in-process** |
+| Cloud dependency | Moderate | Low | **Hard (Google account)** | **None** |
+| RAM floor | ~8GB+ | ~4GB | 16GB recommended | **~2GB target** |
+| WSL2 / Linux | Good | Good | Okay | **First-class** |
+| Self-hostable | Enterprise only | Partial | ❌ | **✅ fully** |
+| Open source | ❌ | AGPL-3 | ❌ | **Apache 2.0** |
+
+---
+
+## Positioning
+
+The IDE market is splitting in two directions:
+
+**Upward** — tools like Google Antigravity are becoming agent orchestration platforms.
+You delegate features to autonomous agents. The IDE becomes Mission Control.
+Powerful for high-level product work. Requires cloud. Requires trust. Requires Google.
+
+**Downward** — Idep goes the other way. Native runtime, local inference, in-process RAG.
+You remain the thinker. The tool disappears. Your codebase never leaves your machine.
+
+Idep is for developers who want thought-level control, not agent-level delegation.
 
 ---
 

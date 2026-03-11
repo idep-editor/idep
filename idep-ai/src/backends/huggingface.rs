@@ -32,6 +32,16 @@ impl Backend for HuggingFaceBackend {
         "huggingface"
     }
 
+    fn info(&self) -> super::BackendInfo {
+        super::BackendInfo {
+            name: "huggingface",
+            version: None,
+            endpoint: self.endpoint.clone(),
+            cloud_dependent: true,
+            requires_auth: true,
+        }
+    }
+
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!("HuggingFace complete: model={}", self.model);
 

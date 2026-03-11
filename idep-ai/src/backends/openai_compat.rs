@@ -32,6 +32,16 @@ impl Backend for OpenAiCompatBackend {
         "openai_compat"
     }
 
+    fn info(&self) -> super::BackendInfo {
+        super::BackendInfo {
+            name: "openai_compat",
+            version: None,
+            endpoint: self.url.clone(),
+            cloud_dependent: true,
+            requires_auth: self.api_key.is_some(),
+        }
+    }
+
     async fn complete(&self, prompt: &str, max_tokens: u32) -> Result<String> {
         debug!(
             "OpenAI-compat complete: model={} url={}",

@@ -16,6 +16,8 @@
 - [x] Add `rust-toolchain.toml` to pin Rust version
 - [x] Register `github.com/idep-editor/website` repo (placeholder for idep.dev)
 - [ ] File DJKI trademark — Class 42 (software) ← per Defensive Branding Framework
+- [x] Add `SUSTAINABILITY.md` — contribution model, what Idep will never do
+- [x] Add `SECURITY.md` — threat model, local-first security guarantees
 
 ---
 
@@ -190,6 +192,8 @@ api_key = "..."              # optional — anthropic / huggingface / openai onl
 
 ## 💡 Backlog / Future
 
+- [ ] Competitive benchmark page: Idep vs Antigravity on RAM, startup time, latency
+- [ ] "Why not Antigravity?" doc — honest comparison for developers evaluating both
 - [ ] HyQAI integration — quantum-classical hybrid code suggestion (CiptaSel P1 angle)
 - [ ] Tolvex/Idep integration — syntax support for Tolvex language
 - [ ] Balinese developer community outreach (ASEAN first-mover)
