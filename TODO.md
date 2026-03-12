@@ -142,12 +142,12 @@
 > **Gate:** `initialize` → `initialized` → `shutdown` handshake completes cleanly against `rust-analyzer`
 
 #### `idep-lsp` — Process management
-- [ ] Spawn language server subprocess (`Command` + stdio pipes)
-- [ ] Capture stdout/stderr separately
-- [ ] Graceful shutdown: send `shutdown` request, wait for response, send `exit` notification
-- [ ] Force-kill if shutdown times out (configurable, default 5s)
-- [ ] Restart policy: exponential backoff, max 3 retries
-- [ ] Unit test: mock LSP server, verify lifecycle sequence
+- [x] Spawn language server subprocess (`Command` + stdio pipes)
+- [x] Capture stdout/stderr separately
+- [x] Graceful shutdown: send `shutdown` request, wait for response, send `exit` notification
+- [x] Force-kill if shutdown times out (configurable, default 5s)
+- [x] Restart policy: exponential backoff, max 3 retries
+- [x] Unit test: mock LSP server, verify lifecycle sequence
 
 #### `idep-lsp` — JSON-RPC transport
 - [ ] `JsonRpcTransport` struct: read/write over stdio
