@@ -131,10 +131,10 @@
 - [x] Unit tests for workspace operations
 
 #### WSL2 — File system
-- [ ] Verify `notify` inotify events fire correctly on native Linux paths (`~/`, `/home/...`)
-- [ ] Verify `notify` behavior on `/mnt/c/...` (DrvFs) paths — document known limitations
-- [ ] Path normalization: `WindowsPath` ↔ `LinuxPath` translation utility
-- [ ] Unit test: open file via `/mnt/c` path, save, verify watcher fires
+- [x] Verify `notify` inotify events fire correctly on native Linux paths (`~/`, `/home/...`)
+- [x] Verify `notify` behavior on `/mnt/c/...` (DrvFs) paths — document known limitations
+- [x] Path normalization: `WindowsPath` ↔ `LinuxPath` translation utility
+- [x] Unit test: open file via `/mnt/c` path, save, verify watcher fires
 
 ---
 
