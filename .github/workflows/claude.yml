@@ -8,8 +8,7 @@ jobs:
   claude-review:
     if: |
       github.event.issue.pull_request != null && 
-      contains(github.event.comment.body, '@claude') &&
-      secrets.ANTHROPIC_API_KEY != ''
+      contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
