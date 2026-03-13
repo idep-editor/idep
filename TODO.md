@@ -138,7 +138,7 @@
 
 ---
 
-### ✅ v0.0.3 — LSP Client Lifecycle
+### ✅ v0.0.3 — LSP Client Lifecycle (done)
 > **Gate:** `initialize` → `initialized` → `shutdown` handshake completes cleanly against `rust-analyzer`
 
 #### `idep-lsp` — Process management

@@ -5,11 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.3
+## [Unreleased] — v0.0.4
 
 ### Planned
 - LSP server integration (`textDocument/completion`)
 - End-to-end LSP completion flow
+- Buffer sync (`didOpen`/`didChange`/`didSave`) end-to-end
+
+---
+
+## [v0.0.3] — 2026-03-13
+
+### Added
+- LSP client lifecycle: spawn, shutdown, restart with backoff, stderr capture
+- JSON-RPC transport over stdio with Content-Length framing, pending-response tracking, and notification broadcast
+- Initialize handshake helper with stored `InitializeResult` and client capabilities
+- WSL2 path normalization utilities (Windows ↔ `/mnt/<drive>`), plus round-trip tests and env-gated rust-analyzer integration scaffold
+- CI installs `rust-analyzer` component; initialize→shutdown sequence test
+
+### Changed
+- rust-analyzer integration test now env-gated (`RUN_RA_INT=1`) instead of ignored
 
 ---
 
