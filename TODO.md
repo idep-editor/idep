@@ -150,14 +150,14 @@
 - [x] Unit test: mock LSP server, verify lifecycle sequence
 
 #### `idep-lsp` — JSON-RPC transport
-- [ ] `JsonRpcTransport` struct: read/write over stdio
-- [ ] Content-Length header framing (LSP wire format)
-- [ ] Async read loop: deserialize incoming messages
-- [ ] Outgoing message queue: serialize + write
-- [ ] Request ID tracking: match responses to pending requests
-- [ ] Notification dispatch: fire-and-forget incoming notifications
-- [ ] Unit test: round-trip a request/response pair
-- [ ] Unit test: handle malformed message gracefully
+- [x] `JsonRpcTransport` struct: read/write over stdio
+- [x] Content-Length header framing (LSP wire format)
+- [x] Async read loop: deserialize incoming messages
+- [x] Outgoing message queue: serialize + write
+- [x] Request ID tracking: match responses to pending requests
+- [x] Notification dispatch: fire-and-forget incoming notifications
+- [x] Unit test: round-trip a request/response pair
+- [x] Unit test: handle malformed message gracefully
 
 #### `idep-lsp` — `initialize` handshake
 - [ ] Build `InitializeParams` with client capabilities
