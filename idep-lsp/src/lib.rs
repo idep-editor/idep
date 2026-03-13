@@ -2,6 +2,12 @@
 //
 // Language server protocol orchestration and client management
 
+pub mod client;
+pub mod diagnostics;
+pub mod document;
+pub mod jsonrpc_transport;
+pub mod path;
+
 use anyhow::Result;
 use idep_ai::{
     backends::Backend,

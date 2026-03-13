@@ -21,7 +21,11 @@ serde.workspace       = true
 serde_json.workspace  = true
 lsp-types.workspace   = true
 jsonrpc-core.workspace = true
+lsp-server            = "0.7"
+crossbeam-channel     = "0.5"
 idep-ai               = { path = "../idep-ai" }
+url                   = "2.5"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+tempfile = "3"

@@ -138,44 +138,44 @@
 
 ---
 
-### 🔴 v0.0.3 — LSP Client Lifecycle
+### ✅ v0.0.3 — LSP Client Lifecycle
 > **Gate:** `initialize` → `initialized` → `shutdown` handshake completes cleanly against `rust-analyzer`
 
 #### `idep-lsp` — Process management
-- [ ] Spawn language server subprocess (`Command` + stdio pipes)
-- [ ] Capture stdout/stderr separately
-- [ ] Graceful shutdown: send `shutdown` request, wait for response, send `exit` notification
-- [ ] Force-kill if shutdown times out (configurable, default 5s)
-- [ ] Restart policy: exponential backoff, max 3 retries
-- [ ] Unit test: mock LSP server, verify lifecycle sequence
+- [x] Spawn language server subprocess (`Command` + stdio pipes)
+- [x] Capture stdout/stderr separately
+- [x] Graceful shutdown: send `shutdown` request, wait for response, send `exit` notification
+- [x] Force-kill if shutdown times out (configurable, default 5s)
+- [x] Restart policy: exponential backoff, max 3 retries
+- [x] Unit test: mock LSP server, verify lifecycle sequence
 
 #### `idep-lsp` — JSON-RPC transport
-- [ ] `JsonRpcTransport` struct: read/write over stdio
-- [ ] Content-Length header framing (LSP wire format)
-- [ ] Async read loop: deserialize incoming messages
-- [ ] Outgoing message queue: serialize + write
-- [ ] Request ID tracking: match responses to pending requests
-- [ ] Notification dispatch: fire-and-forget incoming notifications
-- [ ] Unit test: round-trip a request/response pair
-- [ ] Unit test: handle malformed message gracefully
+- [x] `JsonRpcTransport` struct: read/write over stdio
+- [x] Content-Length header framing (LSP wire format)
+- [x] Async read loop: deserialize incoming messages
+- [x] Outgoing message queue: serialize + write
+- [x] Request ID tracking: match responses to pending requests
+- [x] Notification dispatch: fire-and-forget incoming notifications
+- [x] Unit test: round-trip a request/response pair
+- [x] Unit test: handle malformed message gracefully
 
 #### `idep-lsp` — `initialize` handshake
-- [ ] Build `InitializeParams` with client capabilities
-- [ ] Send `initialize` request
-- [ ] Receive and store `InitializeResult` (server capabilities)
-- [ ] Send `initialized` notification
-- [ ] Store negotiated capabilities for downstream use
-- [ ] Integration test: full handshake with `rust-analyzer`
+- [x] Build `InitializeParams` with client capabilities
+- [x] Send `initialize` request
+- [x] Receive and store `InitializeResult` (server capabilities)
+- [x] Send `initialized` notification
+- [x] Store negotiated capabilities for downstream use
+- [x] Integration test: full handshake with `rust-analyzer`
 
 #### WSL2 — LSP path handling
-- [ ] URI normalization: convert `file:///mnt/c/...` URIs to WSL-native paths before sending to LSP server
-- [ ] URI normalization: convert LSP server responses back to idep-internal paths
-- [ ] Unit test: round-trip path conversion for Windows-style and Linux-style paths
-- [ ] Integration test: `rust-analyzer` started from WSL2, resolves definition across path boundary
+- [x] URI normalization: convert `file:///mnt/c/...` URIs to WSL-native paths before sending to LSP server
+- [x] URI normalization: convert LSP server responses back to idep-internal paths
+- [x] Unit test: round-trip path conversion for Windows-style and Linux-style paths
+- [x] Integration test: `rust-analyzer` started from WSL2, resolves definition across path boundary
 
 #### CI gate
-- [ ] Integration test runs `rust-analyzer` in CI (install via `rustup component add rust-analyzer`)
-- [ ] Test: initialize → shutdown sequence passes
+- [x] Integration test runs `rust-analyzer` in CI (install via `rustup component add rust-analyzer`)
+- [x] Test: initialize → shutdown sequence passes
 
 ---
 
