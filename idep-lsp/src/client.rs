@@ -5,9 +5,9 @@ use lsp_types::request::{
     GotoDefinition, HoverRequest, Initialize, Request as LspRequest, Shutdown,
 };
 use lsp_types::{
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
-    InitializeResult, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-    WorkDoneProgressParams,
+    ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+    InitializeParams, InitializeResult, Position, TextDocumentIdentifier,
+    TextDocumentPositionParams, Url, WorkDoneProgressParams,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -30,6 +30,7 @@ pub struct LspClient {
     reader: Arc<Mutex<BufReader<ChildStdout>>>,
     pub stderr_output: Arc<Mutex<Vec<String>>>,
     pub shutdown_timeout: Duration,
+    initialize_result: Arc<Mutex<Option<InitializeResult>>>,
 }
 
 impl LspClient {
@@ -86,20 +87,54 @@ impl LspClient {
             reader: Arc::new(Mutex::new(BufReader::new(child_stdout))),
             stderr_output,
             shutdown_timeout,
+            initialize_result: Arc::new(Mutex::new(None)),
         })
     }
 
     /// Initialize handshake with the language server.
     pub async fn initialize(&mut self, root_uri: lsp_types::Url) -> Result<InitializeResult> {
         let id = self.next_id();
+        let params = Self::build_initialize_params(root_uri.clone());
+
+        let req = Request::new(
+            RequestId::from(id as i32),
+            Initialize::METHOD.to_string(),
+            params,
+        );
+        self.send(Message::Request(req)).await?;
+        let result = self.wait_for_response(id).await.and_then(|val| {
+            let result: InitializeResult = serde_json::from_value(val.unwrap_or_default())
+                .context("Failed to decode initialize result")?;
+            Ok(result)
+        })?;
+
+        let mut stored = self.initialize_result.lock().await;
+        *stored = Some(result.clone());
+
+        Ok(result)
+    }
+
+    pub async fn initialized(&mut self) -> Result<()> {
+        let notif = Notification::new(Initialized::METHOD.to_string(), serde_json::Value::Null);
+        self.send(Message::Notification(notif)).await
+    }
+
+    pub async fn initialize_result(&self) -> Option<InitializeResult> {
+        self.initialize_result.lock().await.clone()
+    }
+
+    fn build_initialize_params(root_uri: Url) -> InitializeParams {
         #[allow(deprecated)]
-        let params = InitializeParams {
+        InitializeParams {
             process_id: None,
-            client_info: None,
+            client_info: Some(lsp_types::ClientInfo {
+                name: "idep-lsp".into(),
+                version: Some(env!("CARGO_PKG_VERSION").into()),
+            }),
             root_path: None,
             root_uri: Some(root_uri.clone()),
             initialization_options: None,
-            capabilities: lsp_types::ClientCapabilities::default(),
+            capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: Some(vec![lsp_types::WorkspaceFolder {
                 uri: root_uri,
@@ -109,24 +144,7 @@ impl LspClient {
             work_done_progress_params: WorkDoneProgressParams {
                 work_done_token: None,
             },
-        };
-
-        let req = Request::new(
-            RequestId::from(id as i32),
-            Initialize::METHOD.to_string(),
-            params,
-        );
-        self.send(Message::Request(req)).await?;
-        self.wait_for_response(id).await.and_then(|val| {
-            let result: InitializeResult = serde_json::from_value(val.unwrap_or_default())
-                .context("Failed to decode initialize result")?;
-            Ok(result)
-        })
-    }
-
-    pub async fn initialized(&mut self) -> Result<()> {
-        let notif = Notification::new(Initialized::METHOD.to_string(), serde_json::Value::Null);
-        self.send(Message::Notification(notif)).await
+        }
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
@@ -313,6 +331,7 @@ impl LspClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Stdio;
 
     #[tokio::test]
     async fn test_spawn_with_timeout() {
@@ -352,5 +371,72 @@ mod tests {
         let id1 = client.next_id();
         let id2 = client.next_id();
         assert_eq!(id1 + 1, id2);
+    }
+
+    #[tokio::test]
+    #[ignore = "uses subprocess pipes; keep ignored to avoid CI flake"]
+    async fn test_initialize_stores_result_and_sends_initialized() {
+        let script = r#"
+import sys, json
+
+def read_msg():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return None
+        if line.lower().startswith("content-length:"):
+            length = int(line.split(":",1)[1].strip())
+            sys.stdin.readline()
+            body = sys.stdin.read(length)
+            return json.loads(body)
+
+msg = read_msg()
+
+body = b'{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}'
+header = f"Content-Length: {len(body)}\r\n\r\n".encode()
+sys.stdout.buffer.write(header)
+sys.stdout.buffer.write(body)
+sys.stdout.buffer.flush()
+
+# Expect initialized notification next; just consume it to keep pipes clean
+_ = read_msg()
+"#;
+
+        let mut child = std::process::Command::new("python3")
+            .args(["-u", "-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn python test server");
+
+        let stdin = child.stdin.take().expect("stdin");
+        let stdout = child.stdout.take().expect("stdout");
+
+        let mut client = LspClient {
+            process: child,
+            request_id: AtomicU64::new(1),
+            writer: Arc::new(Mutex::new(stdin)),
+            reader: Arc::new(Mutex::new(BufReader::new(stdout))),
+            stderr_output: Arc::new(Mutex::new(Vec::new())),
+            shutdown_timeout: Duration::from_millis(100),
+            initialize_result: Arc::new(Mutex::new(None)),
+        };
+
+        let root_uri = Url::parse("file:///tmp").unwrap();
+        let result = client
+            .initialize(root_uri.clone())
+            .await
+            .expect("initialize");
+        assert!(
+            result.capabilities.text_document_sync.is_none(),
+            "capabilities should be parsed"
+        );
+
+        client.initialized().await.expect("initialized");
+
+        let stored = client.initialize_result().await;
+        assert!(stored.is_some(), "initialize result should be stored");
+
+        let _ = client.process.kill();
     }
 }

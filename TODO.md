@@ -160,11 +160,11 @@
 - [x] Unit test: handle malformed message gracefully
 
 #### `idep-lsp` — `initialize` handshake
-- [ ] Build `InitializeParams` with client capabilities
-- [ ] Send `initialize` request
-- [ ] Receive and store `InitializeResult` (server capabilities)
-- [ ] Send `initialized` notification
-- [ ] Store negotiated capabilities for downstream use
+- [x] Build `InitializeParams` with client capabilities
+- [x] Send `initialize` request
+- [x] Receive and store `InitializeResult` (server capabilities)
+- [x] Send `initialized` notification
+- [x] Store negotiated capabilities for downstream use
 - [ ] Integration test: full handshake with `rust-analyzer`
 
 #### WSL2 — LSP path handling
