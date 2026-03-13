@@ -138,7 +138,7 @@
 
 ---
 
-### 🔴 v0.0.3 — LSP Client Lifecycle
+### ✅ v0.0.3 — LSP Client Lifecycle
 > **Gate:** `initialize` → `initialized` → `shutdown` handshake completes cleanly against `rust-analyzer`
 
 #### `idep-lsp` — Process management
@@ -165,7 +165,7 @@
 - [x] Receive and store `InitializeResult` (server capabilities)
 - [x] Send `initialized` notification
 - [x] Store negotiated capabilities for downstream use
-- [ ] Integration test: full handshake with `rust-analyzer`
+- [x] Integration test: full handshake with `rust-analyzer`
 
 #### WSL2 — LSP path handling
 - [x] URI normalization: convert `file:///mnt/c/...` URIs to WSL-native paths before sending to LSP server

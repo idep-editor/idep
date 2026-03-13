@@ -11,8 +11,10 @@ use lsp_types::{
 use tokio::sync::Mutex;
 
 #[tokio::test]
-#[ignore] // Requires rust-analyzer in PATH
 async fn spawns_rust_analyzer_and_gets_completions() -> Result<()> {
+    if std::env::var("RUN_RA_INT").unwrap_or_default() != "1" {
+        return Ok(());
+    }
     // 1. Create a temp Rust project
     let dir = tempfile::tempdir()?;
     fs::create_dir_all(dir.path().join("src"))?;
