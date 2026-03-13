@@ -300,23 +300,22 @@ impl LspClient {
         let mut reader = self.reader.lock().await;
         let mut header = String::new();
 
-        // Read headers until empty line
+        // Read headers until Content-Length then body
         loop {
             header.clear();
             let bytes = reader.read_line(&mut header)?;
             if bytes == 0 {
                 bail!("LSP server closed the stream");
             }
-            if header == "\r\n" {
-                break;
+            if header.trim().is_empty() {
+                continue;
             }
             if header.to_lowercase().starts_with("content-length:") {
                 let len_str = header[15..].trim();
                 let len: usize = len_str.parse().context("Invalid Content-Length")?;
-                // Consume the blank line if not already
-                if header.ends_with("\r\n") {
-                    // already consumed
-                }
+                // Consume the blank line
+                let mut blank = String::new();
+                reader.read_line(&mut blank)?;
                 let mut buf = vec![0u8; len];
                 reader.read_exact(&mut buf)?;
                 let msg: Message =
@@ -324,7 +323,6 @@ impl LspClient {
                 return Ok(msg);
             }
         }
-        bail!("Failed to read LSP message")
     }
 }
 
@@ -438,5 +436,74 @@ _ = read_msg()
         assert!(stored.is_some(), "initialize result should be stored");
 
         let _ = client.process.kill();
+    }
+
+    #[tokio::test]
+    async fn test_initialize_shutdown_sequence() {
+        let script = r#"
+import sys, json
+
+def read_msg():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return None
+        if line.lower().startswith("content-length:"):
+            length = int(line.split(":",1)[1].strip())
+            sys.stdin.readline()
+            body = sys.stdin.read(length)
+            return json.loads(body)
+
+# initialize
+init_msg = read_msg()
+init_resp = {"jsonrpc": "2.0", "id": init_msg.get("id", 1), "result": {"capabilities": {}}}
+body = json.dumps(init_resp).encode()
+header = f"Content-Length: {len(body)}\r\n\r\n".encode()
+sys.stdout.buffer.write(header + body)
+sys.stdout.buffer.flush()
+
+# shutdown
+shutdown_msg = read_msg()
+shutdown_resp = {"jsonrpc": "2.0", "id": shutdown_msg.get("id", 2), "result": None}
+body = json.dumps(shutdown_resp).encode()
+header = f"Content-Length: {len(body)}\r\n\r\n".encode()
+sys.stdout.buffer.write(header + body)
+sys.stdout.buffer.flush()
+
+# exit notification (ignore)
+_ = read_msg()
+
+"#;
+
+        let mut child = std::process::Command::new("python3")
+            .args(["-u", "-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn python test server");
+
+        let stdin = child.stdin.take().expect("stdin");
+        let stdout = child.stdout.take().expect("stdout");
+
+        let mut client = LspClient {
+            process: child,
+            request_id: AtomicU64::new(1),
+            writer: Arc::new(Mutex::new(stdin)),
+            reader: Arc::new(Mutex::new(BufReader::new(stdout))),
+            stderr_output: Arc::new(Mutex::new(Vec::new())),
+            shutdown_timeout: Duration::from_secs(2),
+            initialize_result: Arc::new(Mutex::new(None)),
+        };
+
+        let root_uri = Url::parse("file:///tmp").unwrap();
+        let init = client
+            .initialize(root_uri.clone())
+            .await
+            .expect("initialize");
+        assert!(init.capabilities.text_document_sync.is_none());
+
+        client.initialized().await.expect("initialized");
+
+        client.shutdown().await.expect("shutdown should succeed");
     }
 }

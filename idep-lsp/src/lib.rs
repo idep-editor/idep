@@ -6,6 +6,7 @@ pub mod client;
 pub mod diagnostics;
 pub mod document;
 pub mod jsonrpc_transport;
+pub mod path;
 
 use anyhow::Result;
 use idep_ai::{

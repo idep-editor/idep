@@ -168,14 +168,14 @@
 - [ ] Integration test: full handshake with `rust-analyzer`
 
 #### WSL2 — LSP path handling
-- [ ] URI normalization: convert `file:///mnt/c/...` URIs to WSL-native paths before sending to LSP server
-- [ ] URI normalization: convert LSP server responses back to idep-internal paths
-- [ ] Unit test: round-trip path conversion for Windows-style and Linux-style paths
-- [ ] Integration test: `rust-analyzer` started from WSL2, resolves definition across path boundary
+- [x] URI normalization: convert `file:///mnt/c/...` URIs to WSL-native paths before sending to LSP server
+- [x] URI normalization: convert LSP server responses back to idep-internal paths
+- [x] Unit test: round-trip path conversion for Windows-style and Linux-style paths
+- [x] Integration test: `rust-analyzer` started from WSL2, resolves definition across path boundary
 
 #### CI gate
-- [ ] Integration test runs `rust-analyzer` in CI (install via `rustup component add rust-analyzer`)
-- [ ] Test: initialize → shutdown sequence passes
+- [x] Integration test runs `rust-analyzer` in CI (install via `rustup component add rust-analyzer`)
+- [x] Test: initialize → shutdown sequence passes
 
 ---
 
