@@ -179,7 +179,7 @@
 
 ---
 
-### 🔴 v0.0.4 — LSP Completions in Buffer
+### ✅ v0.0.4 — LSP Completions in Buffer
 > **Gate:** `textDocument/completion` request round-trips and results land in buffer
 
 #### `idep-lsp` — Document sync
@@ -200,8 +200,8 @@
 
 #### `idep-core` — Completion insertion
 - [x] `Buffer::apply_completion(item)` — insert text at cursor
-- [ ] Handle `insertText` vs `textEdit` completion item kinds
-- [ ] Unit test: completion applied correctly at various cursor positions
+- [x] Handle `insertText` vs `textEdit` completion item kinds
+- [x] Unit test: completion applied correctly at various cursor positions
 
 ---
 

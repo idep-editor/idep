@@ -1,4 +1,4 @@
-use lsp_types::CompletionItem;
+use lsp_types::{CompletionItem, CompletionTextEdit};
 use ropey::Rope;
 use std::fmt;
 use std::ops::Range;
@@ -87,7 +87,14 @@ impl Buffer {
     /// Apply a completion item at the current cursor position.
     /// Uses `insertText` if present, otherwise falls back to label.
     pub fn apply_completion(&mut self, item: &CompletionItem) {
-        let text = item.insert_text.as_deref().unwrap_or(item.label.as_str());
+        let text = if let Some(edit) = &item.text_edit {
+            match edit {
+                CompletionTextEdit::Edit(e) => e.new_text.as_str(),
+                CompletionTextEdit::InsertAndReplace(e) => e.new_text.as_str(),
+            }
+        } else {
+            item.insert_text.as_deref().unwrap_or(item.label.as_str())
+        };
         let pos = self.cursor_char_index();
         self.insert(pos, text);
     }
@@ -121,6 +128,7 @@ impl fmt::Display for Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lsp_types::TextEdit;
 
     #[test]
     fn inserts_text_and_updates_cursor() {
@@ -185,5 +193,56 @@ mod tests {
 
         buf.apply_completion(&item);
         assert_eq!(buf.to_string(), "baz");
+    }
+
+    #[test]
+    fn apply_completion_prefers_text_edit_new_text() {
+        let mut buf = Buffer::with_text("hi ");
+        buf.move_cursor_to_end();
+
+        let edit = CompletionTextEdit::Edit(TextEdit {
+            range: lsp_types::Range::default(),
+            new_text: "there".into(),
+        });
+
+        let item = CompletionItem {
+            label: "ignored".into(),
+            text_edit: Some(edit),
+            insert_text: Some("fallback".into()),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "hi there");
+    }
+
+    #[test]
+    fn apply_completion_at_buffer_start() {
+        let mut buf = Buffer::with_text("world");
+        // move cursor to start via zero-length insert
+        buf.insert(0, "");
+
+        let item = CompletionItem {
+            label: "hello ".into(),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "hello world");
+    }
+
+    #[test]
+    fn apply_completion_at_middle_position() {
+        let mut buf = Buffer::with_text("foo bar");
+        // place cursor after "foo"
+        buf.insert(3, "");
+
+        let item = CompletionItem {
+            label: "baz".into(),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "foobaz bar");
     }
 }
