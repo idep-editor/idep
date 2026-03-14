@@ -24,6 +24,7 @@ jsonrpc-core.workspace = true
 lsp-server            = "0.7"
 crossbeam-channel     = "0.5"
 idep-ai               = { path = "../idep-ai" }
+idep-core             = { path = "../idep-core" }
 url                   = "2.5"
 
 [dev-dependencies]

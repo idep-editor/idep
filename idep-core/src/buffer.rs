@@ -1,3 +1,4 @@
+use lsp_types::{CompletionItem, CompletionTextEdit};
 use ropey::Rope;
 use std::fmt;
 use std::ops::Range;
@@ -65,13 +66,67 @@ impl Buffer {
         self.cursor
     }
 
+    /// Move cursor to end of buffer (last line, after last char).
+    pub fn move_cursor_to_end(&mut self) {
+        let len = self.rope.len_chars();
+        if len == 0 {
+            self.cursor = Cursor { line: 0, column: 0 };
+            return;
+        }
+        let line = self.rope.char_to_line(len);
+        let line_start = self.rope.line_to_char(line);
+        let col = len.saturating_sub(line_start);
+        self.cursor = Cursor { line, column: col };
+    }
+
+    fn cursor_char_index(&self) -> usize {
+        let line_start = self.rope.line_to_char(self.cursor.line);
+        line_start + self.cursor.column
+    }
+
+    /// Apply a text edit: delete the range and insert new text.
+    pub fn apply_text_edit(&mut self, range: lsp_types::Range, new_text: &str) {
+        let start_char =
+            self.rope.line_to_char(range.start.line as usize) + range.start.character as usize;
+        let end_char =
+            self.rope.line_to_char(range.end.line as usize) + range.end.character as usize;
+        self.delete(start_char..end_char);
+        self.insert(start_char, new_text);
+    }
+
+    /// Apply a completion item at the current cursor position.
+    /// Uses textEdit (with range replacement) if present, otherwise insertText or label.
+    pub fn apply_completion(&mut self, item: &CompletionItem) {
+        if let Some(edit) = &item.text_edit {
+            match edit {
+                CompletionTextEdit::Edit(e) => {
+                    self.apply_text_edit(e.range, &e.new_text);
+                    return;
+                }
+                CompletionTextEdit::InsertAndReplace(e) => {
+                    self.apply_text_edit(e.insert, &e.new_text);
+                    return;
+                }
+            }
+        }
+        let text = item.insert_text.as_deref().unwrap_or(item.label.as_str());
+        let pos = self.cursor_char_index();
+        self.insert(pos, text);
+    }
+
     fn update_cursor(&mut self, pos: usize) {
         let line = self.rope.char_to_line(pos.min(self.rope.len_chars()));
         let col = pos.saturating_sub(self.rope.line_to_char(line));
-        // Clamp column to line length (without trailing newline)
-        let line_len = self.rope.line(line).len_chars().saturating_sub(1);
+        // Clamp column to last character index (trim trailing newline if present)
+        let line_len = self.rope.line(line).len_chars();
+        let line_len = if self.rope.line(line).chars().last() == Some('\n') {
+            line_len.saturating_sub(1)
+        } else {
+            line_len
+        };
+        let max_col = line_len.saturating_sub(1);
         self.cursor.line = line;
-        self.cursor.column = col.min(line_len);
+        self.cursor.column = col.min(max_col);
     }
 }
 
@@ -90,6 +145,7 @@ impl fmt::Display for Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lsp_types::TextEdit;
 
     #[test]
     fn inserts_text_and_updates_cursor() {
@@ -127,5 +183,93 @@ mod tests {
         let cursor = buf.cursor();
         assert_eq!(cursor.line, 0);
         assert_eq!(cursor.column, 0);
+    }
+
+    #[test]
+    fn apply_completion_prefers_insert_text() {
+        let mut buf = Buffer::with_text("foo");
+        buf.move_cursor_to_end();
+
+        let item = CompletionItem {
+            label: "ignored".into(),
+            insert_text: Some("bar".into()),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "foobar");
+    }
+
+    #[test]
+    fn apply_completion_falls_back_to_label() {
+        let mut buf = Buffer::with_text("");
+        let item = CompletionItem {
+            label: "baz".into(),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "baz");
+    }
+
+    #[test]
+    fn apply_completion_prefers_text_edit_new_text() {
+        let mut buf = Buffer::with_text("hi ");
+        buf.move_cursor_to_end();
+
+        // Range covering "hi " (line 0, chars 0-3)
+        let edit = CompletionTextEdit::Edit(TextEdit {
+            range: lsp_types::Range {
+                start: lsp_types::Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: lsp_types::Position {
+                    line: 0,
+                    character: 3,
+                },
+            },
+            new_text: "there".into(),
+        });
+
+        let item = CompletionItem {
+            label: "ignored".into(),
+            text_edit: Some(edit),
+            insert_text: Some("fallback".into()),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "there");
+    }
+
+    #[test]
+    fn apply_completion_at_buffer_start() {
+        let mut buf = Buffer::with_text("world");
+        // move cursor to start via zero-length insert
+        buf.insert(0, "");
+
+        let item = CompletionItem {
+            label: "hello ".into(),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "hello world");
+    }
+
+    #[test]
+    fn apply_completion_at_middle_position() {
+        let mut buf = Buffer::with_text("foo bar");
+        // place cursor after "foo"
+        buf.insert(3, "");
+
+        let item = CompletionItem {
+            label: "baz".into(),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "foobaz bar");
     }
 }
