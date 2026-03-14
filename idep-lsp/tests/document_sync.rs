@@ -6,6 +6,15 @@ use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn sends_open_change_save_close_sequence() -> Result<()> {
+    // Skip test if python3 is not available (CI environments may not have it)
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return Ok(());
+    }
+
     let dir = tempfile::tempdir()?;
     let log_path = dir.path().join("log.txt");
 

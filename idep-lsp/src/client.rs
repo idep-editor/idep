@@ -270,24 +270,6 @@ impl LspClient {
         Ok(Some(resp))
     }
 
-    /// Simple ranking: shorter labels first, then lexicographic.
-    pub fn rank_completions(
-        items: Vec<lsp_types::CompletionItem>,
-    ) -> Vec<lsp_types::CompletionItem> {
-        let mut dedup: std::collections::HashMap<String, lsp_types::CompletionItem> =
-            std::collections::HashMap::new();
-        for item in items {
-            dedup.entry(item.label.clone()).or_insert(item);
-        }
-        let mut vals: Vec<_> = dedup.into_values().collect();
-        vals.sort_by(|a, b| {
-            let la = a.label.len();
-            let lb = b.label.len();
-            la.cmp(&lb).then_with(|| a.label.cmp(&b.label))
-        });
-        vals
-    }
-
     /// Attempt to restart the LSP server with exponential backoff.
     /// Max 3 retries with delays: 1s, 2s, 4s.
     pub async fn restart_with_backoff(command: &str, args: &[&str]) -> Result<Self> {
@@ -612,33 +594,5 @@ sys.stdout.buffer.flush()
         }
 
         let _ = client.process.kill();
-    }
-
-    #[test]
-    fn test_rank_completions_sorts_and_dedups() {
-        let items = vec![
-            lsp_types::CompletionItem {
-                label: "beta".into(),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "alpha".into(),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "alpha".into(),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "a".into(),
-                ..Default::default()
-            },
-        ];
-
-        let ranked = LspClient::rank_completions(items);
-        let labels: Vec<_> = ranked.iter().map(|i| i.label.as_str()).collect();
-        // After dedup: "a" (len 1), "alpha" (len 5), "beta" (len 4)
-        // Sorted by length then lexicographic: "a", "beta", "alpha"
-        assert_eq!(labels, vec!["a", "beta", "alpha"]);
     }
 }

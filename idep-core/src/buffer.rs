@@ -84,17 +84,32 @@ impl Buffer {
         line_start + self.cursor.column
     }
 
+    /// Apply a text edit: delete the range and insert new text.
+    pub fn apply_text_edit(&mut self, range: lsp_types::Range, new_text: &str) {
+        let start_char =
+            self.rope.line_to_char(range.start.line as usize) + range.start.character as usize;
+        let end_char =
+            self.rope.line_to_char(range.end.line as usize) + range.end.character as usize;
+        self.delete(start_char..end_char);
+        self.insert(start_char, new_text);
+    }
+
     /// Apply a completion item at the current cursor position.
-    /// Uses `insertText` if present, otherwise falls back to label.
+    /// Uses textEdit (with range replacement) if present, otherwise insertText or label.
     pub fn apply_completion(&mut self, item: &CompletionItem) {
-        let text = if let Some(edit) = &item.text_edit {
+        if let Some(edit) = &item.text_edit {
             match edit {
-                CompletionTextEdit::Edit(e) => e.new_text.as_str(),
-                CompletionTextEdit::InsertAndReplace(e) => e.new_text.as_str(),
+                CompletionTextEdit::Edit(e) => {
+                    self.apply_text_edit(e.range, &e.new_text);
+                    return;
+                }
+                CompletionTextEdit::InsertAndReplace(e) => {
+                    self.apply_text_edit(e.insert, &e.new_text);
+                    return;
+                }
             }
-        } else {
-            item.insert_text.as_deref().unwrap_or(item.label.as_str())
-        };
+        }
+        let text = item.insert_text.as_deref().unwrap_or(item.label.as_str());
         let pos = self.cursor_char_index();
         self.insert(pos, text);
     }
@@ -103,10 +118,12 @@ impl Buffer {
         let line = self.rope.char_to_line(pos.min(self.rope.len_chars()));
         let col = pos.saturating_sub(self.rope.line_to_char(line));
         // Clamp column to last character index (trim trailing newline if present)
-        let mut line_len = self.rope.line(line).len_chars();
-        if self.rope.line(line).chars().last() == Some('\n') {
-            line_len = line_len.saturating_sub(1);
-        }
+        let line_len = self.rope.line(line).len_chars();
+        let line_len = if self.rope.line(line).chars().last() == Some('\n') {
+            line_len.saturating_sub(1)
+        } else {
+            line_len
+        };
         let max_col = line_len.saturating_sub(1);
         self.cursor.line = line;
         self.cursor.column = col.min(max_col);
@@ -200,8 +217,18 @@ mod tests {
         let mut buf = Buffer::with_text("hi ");
         buf.move_cursor_to_end();
 
+        // Range covering "hi " (line 0, chars 0-3)
         let edit = CompletionTextEdit::Edit(TextEdit {
-            range: lsp_types::Range::default(),
+            range: lsp_types::Range {
+                start: lsp_types::Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: lsp_types::Position {
+                    line: 0,
+                    character: 3,
+                },
+            },
             new_text: "there".into(),
         });
 
@@ -213,7 +240,7 @@ mod tests {
         };
 
         buf.apply_completion(&item);
-        assert_eq!(buf.to_string(), "hi there");
+        assert_eq!(buf.to_string(), "there");
     }
 
     #[test]
