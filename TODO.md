@@ -183,23 +183,23 @@
 > **Gate:** `textDocument/completion` request round-trips and results land in buffer
 
 #### `idep-lsp` — Document sync
-- [ ] `textDocument/didOpen` — send on buffer open
-- [ ] `textDocument/didChange` — send on buffer mutation (incremental sync)
-- [ ] `textDocument/didSave` — send on file save
-- [ ] `textDocument/didClose` — send on buffer close
-- [ ] Unit test: verify correct notification sequence on open → edit → save → close
+- [x] `textDocument/didOpen` — send on buffer open
+- [x] `textDocument/didChange` — send on buffer mutation (incremental sync)
+- [x] `textDocument/didSave` — send on file save
+- [x] `textDocument/didClose` — send on buffer close
+- [x] Unit test: verify correct notification sequence on open → edit → save → close
 
 #### `idep-lsp` — Completions
-- [ ] `textDocument/completion` request builder
-- [ ] `CompletionParams`: URI, position, context
-- [ ] Parse `CompletionList` / `CompletionItem[]` response
-- [ ] Filter and rank completion items
-- [ ] Bridge completion results to `idep-core` buffer
-- [ ] Unit test: mock server returns completions, verify items parsed
-- [ ] Integration test: get completions from `rust-analyzer` on a real `.rs` file
+- [x] `textDocument/completion` request builder
+- [x] `CompletionParams`: URI, position, context
+- [x] Parse `CompletionList` / `CompletionItem[]` response
+- [x] Filter and rank completion items
+- [x] Bridge completion results to `idep-core` buffer
+- [x] Unit test: mock server returns completions, verify items parsed
+- [x] Integration test: get completions from `rust-analyzer` on a real `.rs` file
 
 #### `idep-core` — Completion insertion
-- [ ] `Buffer::apply_completion(item)` — insert text at cursor
+- [x] `Buffer::apply_completion(item)` — insert text at cursor
 - [ ] Handle `insertText` vs `textEdit` completion item kinds
 - [ ] Unit test: completion applied correctly at various cursor positions
 

@@ -1109,6 +1109,7 @@ dependencies = [
  "anyhow",
  "crossbeam-channel",
  "idep-ai",
+ "idep-core",
  "jsonrpc-core",
  "lsp-server",
  "lsp-types",

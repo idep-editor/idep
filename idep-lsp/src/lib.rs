@@ -3,6 +3,7 @@
 // Language server protocol orchestration and client management
 
 pub mod client;
+pub mod completion;
 pub mod diagnostics;
 pub mod document;
 pub mod jsonrpc_transport;

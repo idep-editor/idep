@@ -2,12 +2,13 @@ use anyhow::{bail, Context, Result};
 use lsp_server::{Message, Notification, Request, RequestId};
 use lsp_types::notification::{Exit, Initialized, Notification as LspNotification};
 use lsp_types::request::{
-    GotoDefinition, HoverRequest, Initialize, Request as LspRequest, Shutdown,
+    Completion, GotoDefinition, HoverRequest, Initialize, Request as LspRequest, Shutdown,
 };
 use lsp_types::{
-    ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
-    InitializeParams, InitializeResult, Position, TextDocumentIdentifier,
-    TextDocumentPositionParams, Url, WorkDoneProgressParams,
+    ClientCapabilities, CompletionContext, CompletionParams, CompletionResponse,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
+    InitializeResult, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    WorkDoneProgressParams,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -239,6 +240,52 @@ impl LspClient {
         let resp: GotoDefinitionResponse =
             serde_json::from_value(val).context("Failed to decode goto definition response")?;
         Ok(Some(resp))
+    }
+
+    /// textDocument/completion helper.
+    pub async fn completion(
+        &mut self,
+        uri: Url,
+        position: Position,
+        context: Option<CompletionContext>,
+    ) -> Result<Option<CompletionResponse>> {
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+            partial_result_params: Default::default(),
+            context,
+        };
+
+        let val = self.request(Completion::METHOD, params).await?;
+        if val.is_null() {
+            return Ok(None);
+        }
+        let resp: CompletionResponse =
+            serde_json::from_value(val).context("Failed to decode completion response")?;
+        Ok(Some(resp))
+    }
+
+    /// Simple ranking: shorter labels first, then lexicographic.
+    pub fn rank_completions(
+        items: Vec<lsp_types::CompletionItem>,
+    ) -> Vec<lsp_types::CompletionItem> {
+        let mut dedup: std::collections::HashMap<String, lsp_types::CompletionItem> =
+            std::collections::HashMap::new();
+        for item in items {
+            dedup.entry(item.label.clone()).or_insert(item);
+        }
+        let mut vals: Vec<_> = dedup.into_values().collect();
+        vals.sort_by(|a, b| {
+            let la = a.label.len();
+            let lb = b.label.len();
+            la.cmp(&lb).then_with(|| a.label.cmp(&b.label))
+        });
+        vals
     }
 
     /// Attempt to restart the LSP server with exponential backoff.
@@ -505,5 +552,93 @@ _ = read_msg()
         client.initialized().await.expect("initialized");
 
         client.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_completion_parses_response() {
+        let script = r#"
+import sys, json
+
+def read_msg():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return None
+        if line.lower().startswith("content-length:"):
+            length = int(line.split(":",1)[1].strip())
+            sys.stdin.readline()
+            body = sys.stdin.read(length)
+            return json.loads(body)
+
+msg = read_msg()
+
+resp = {
+    "jsonrpc": "2.0",
+    "id": msg.get("id", 1),
+    "result": [
+        {"label": "foo", "insertText": "foo"}
+    ]
+}
+
+body = json.dumps(resp).encode()
+header = f"Content-Length: {len(body)}\r\n\r\n".encode()
+sys.stdout.buffer.write(header + body)
+sys.stdout.buffer.flush()
+"#;
+
+        let mut client = LspClient::spawn("python3", &["-u", "-c", script]).expect("spawn python");
+
+        let uri = Url::parse("file:///tmp/test.rs").unwrap();
+        let position = Position {
+            line: 0,
+            character: 0,
+        };
+
+        let resp = client
+            .completion(uri, position, None)
+            .await
+            .expect("completion")
+            .expect("expected response");
+
+        match resp {
+            CompletionResponse::Array(items) => {
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0].label, "foo");
+            }
+            CompletionResponse::List(list) => {
+                assert_eq!(list.items.len(), 1);
+                assert_eq!(list.items[0].label, "foo");
+            }
+        }
+
+        let _ = client.process.kill();
+    }
+
+    #[test]
+    fn test_rank_completions_sorts_and_dedups() {
+        let items = vec![
+            lsp_types::CompletionItem {
+                label: "beta".into(),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "alpha".into(),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "alpha".into(),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "a".into(),
+                ..Default::default()
+            },
+        ];
+
+        let ranked = LspClient::rank_completions(items);
+        let labels: Vec<_> = ranked.iter().map(|i| i.label.as_str()).collect();
+        // After dedup: "a" (len 1), "alpha" (len 5), "beta" (len 4)
+        // Sorted by length then lexicographic: "a", "beta", "alpha"
+        assert_eq!(labels, vec!["a", "beta", "alpha"]);
     }
 }
