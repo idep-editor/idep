@@ -1,4 +1,4 @@
-<!-- Last updated: v0.0.2 — revisit when Indexer or new LSP verbs land -->
+<!-- Last updated: v0.0.4 — revisit when Indexer or new LSP verbs land -->
 
 # Claude Review Context
 
@@ -7,6 +7,7 @@ Use this guide when reviewing pull requests for Idep.
 ## CI requirements
 - Requires `ANTHROPIC_API_KEY` repo secret for Claude reviews via GitHub Actions
 - All PRs must pass `cargo test`, `cargo clippy -D warnings`, and `cargo fmt`
+- GitHub Action usage docs: https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
 
 ## Project snapshot
 - Language: Rust 2021

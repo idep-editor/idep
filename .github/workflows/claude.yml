@@ -1,69 +1,41 @@
-name: Claude PR Review
-
+name: Claude Assistant
 on:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned, labeled]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  claude-review:
-    if: |
-      github.event.issue.pull_request != null && 
-      contains(github.event.comment.body, '@claude')
+  claude-response:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
-    env:
-      PR_NUMBER: ${{ github.event.issue.number }}
-      REPO: ${{ github.repository }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MODEL: claude-sonnet-4-20250514
-      MAX_TOKENS: 4096
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Fetch PR diff (unified, max 15000 chars)
-        id: diff
-        run: |
-          gh api repos/$REPO/pulls/$PR_NUMBER \
-            -H "Accept: application/vnd.github.v3.diff" \
-            > /tmp/pr.diff
-          # Truncate to keep prompt manageable
-          head -c 15000 /tmp/pr.diff > /tmp/pr_truncated.diff
-
-      - name: Build prompt with CLAUDE.md context
-        id: prompt
-        run: |
-          {
-            cat CLAUDE.md
-            echo ""
-            echo "Review the following diff:"
-          } > /tmp/prompt.txt
-          echo "prompt=/tmp/prompt.txt" >> $GITHUB_OUTPUT
-
-      - name: Call Anthropic API for review
-        id: review
-        run: |
-          BODY=$(jq -n \
-            --arg model "$MODEL" \
-            --argjson max_tokens "$MAX_TOKENS" \
-            --rawfile prompt /tmp/prompt.txt \
-            --rawfile diff /tmp/pr_truncated.diff \
-            '{model: $model, max_tokens: $max_tokens, messages: [{role: "user", content: ($prompt + "\n\n" + $diff)}]}')
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
-          RESPONSE=$(curl -sf https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "content-type: application/json" \
-            -H "anthropic-version: 2023-06-01" \
-            -d "$BODY" | jq -r '.content[0].text // "API call failed"')
+          prompt: "Review this code following the guidelines in CLAUDE.md. Focus on correctness, safety, and LSP protocol compliance."
           
-          echo "response<<'EOF'" >> $GITHUB_OUTPUT
-          echo "$RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          claude_args: |
+            --max-turns 10
+            --model claude-sonnet-4-20250514
 
-      - name: Post review comment
-        run: |
-          gh api repos/$REPO/issues/$PR_NUMBER/comments \
-            -f body="Claude review:\n\n${{ steps.review.outputs.response }}"
+          # Optional: add custom plugin marketplaces
+          # plugin_marketplaces: "https://github.com/user/marketplace1.git\nhttps://github.com/user/marketplace2.git"
+          # Optional: install Claude Code plugins
+          # plugins: "code-review@claude-code-plugins\nfeature-dev@claude-code-plugins"
+
+          # Optional: add custom trigger phrase (default: @claude)
+          # trigger_phrase: "/claude"
+          # Optional: add assignee trigger for issues
+          # assignee_trigger: "claude"
+          # Optional: add label trigger for issues
+          # label_trigger: "claude"
+          # Optional: grant additional permissions (requires corresponding GitHub token permissions)
+          # additional_permissions: |
+          #   actions: read
+          # Optional: allow bot users to trigger the action
+          # allowed_bots: "dependabot[bot],renovate[bot]"
