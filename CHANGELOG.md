@@ -5,12 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.4
+## [Unreleased] — v0.0.5
 
 ### Planned
-- LSP server integration (`textDocument/completion`)
-- End-to-end LSP completion flow
-- Buffer sync (`didOpen`/`didChange`/`didSave`) end-to-end
+- LSP diagnostics handling (`textDocument/publishDiagnostics`)
+- Hover and goto-definition support
+- Diagnostic storage and retrieval per document
+
+---
+
+## [v0.0.4] — 2026-03-18
+
+### Added
+- **LSP document synchronization**: `didOpen`, `didChange`, `didSave`, `didClose` notifications
+- **LSP completions**: `textDocument/completion` request builder with full round-trip support
+- `CompletionParams` construction with URI, position, and context
+- Completion response parsing for `CompletionList` and `CompletionItem[]`
+- `Buffer::apply_completion()` with `textEdit` range handling (delete range before insert)
+- `Buffer::apply_text_edit()` for proper LSP range replacement
+- Completion ranking: sort by `sort_text` (server intent), then label length, deterministic deduplication via `BTreeMap`
+- `completion.rs` module for bridging LSP results to buffer
+- rust-analyzer integration test for real completion requests
+- Document sync test with Python mock server (gated by python3 availability)
+
+### Fixed
+- **textEdit range bug**: Completions now properly delete the specified range before inserting, preventing doubled text (e.g., "fn fo" + "fn foo" → "fn foo")
+- Dead code shadow in `update_cursor` (removed variable re-declaration)
+- Cursor positioning: clamp to last character index (line_len - 1), accounting for trailing newlines
+
+### Changed
+- Moved `rank_completions` from `LspClient` to `completion.rs` module (better organization)
+- Completion ranking now respects `sort_text` field per LSP spec
+- Updated Claude workflow to use `claude-code-action@v1` with custom prompt and model settings
+- Expanded `CLAUDE.md` with full SDLC coverage, SemVer guidance, and deployment context
 
 ---
 
