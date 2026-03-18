@@ -755,6 +755,15 @@
 - [ ] Tag commit as `plugin-api-v1-frozen`
 - [ ] CI check: any change to `idep-plugin/src/api.rs` after this tag requires explicit override
 
+#### Inter-plugin messaging schema (reserved, not yet implemented)
+- [ ] Reserve `[messaging]` section in `plugin.toml` manifest schema
+  - [ ] `subscribes_to`: array of event topic strings (e.g. `["file.save", "completion.accepted"]`)
+  - [ ] `publishes`: array of event topic strings (e.g. `["lint.result"]`)
+- [ ] Schema validation: accept and store `[messaging]` fields, but do not wire a bus yet
+- [ ] Document in `docs/plugin-api-v1.md`: "reserved for future inter-plugin event bus — fields are parsed and validated but not dispatched in v0.3.0"
+- [ ] Unit test: `plugin.toml` with `[messaging]` section parses without error
+- [ ] Unit test: `plugin.toml` without `[messaging]` section still parses (backward compat)
+
 ---
 
 ### 🔴 v0.3.1 — WASM Host
@@ -869,6 +878,14 @@
 - [ ] CLI: `idep plugin list` — list loaded plugins
 - [ ] CLI: `idep plugin disable <name>` — move to disabled dir
 
+#### Plugin discoverability via RAG
+- [ ] On plugin load: index `plugin.toml` metadata (name, version, description, hook list) into `idep-index` vector store
+- [ ] On plugin unload: remove plugin metadata chunks from vector store
+- [ ] `ContextEngine::gather()` includes plugin capability chunks when query matches plugin description
+- [ ] Chat panel can answer "what plugins are installed?" and "can any plugin do X?" from indexed context
+- [ ] Unit test: install plugin → query vector store → plugin metadata chunk returned
+- [ ] Unit test: uninstall plugin → query vector store → plugin metadata chunk absent
+
 ---
 
 ## Phase 0.4.x — Config UX + Distribution
@@ -940,6 +957,15 @@
 - [ ] Format: `action-name    <key>    # description`
 - [ ] Groups by context: global / editor / chat / file-tree
 - [ ] `--list-keys --json` prints machine-readable JSON
+
+#### `--plugin-verify`
+- [ ] `idep plugin verify <path>` — compute SHA256 of `.wasm` file, compare against `plugin.toml` `[integrity].sha256`
+- [ ] `plugin.toml` schema: optional `[integrity]` section with `sha256` field
+- [ ] `idep plugin install <path>` — if `[integrity].sha256` is present, verify before copying to plugins dir; fail on mismatch
+- [ ] `idep plugin install <path> --skip-verify` — bypass integrity check (explicit opt-out)
+- [ ] Unit test: matching hash → install succeeds
+- [ ] Unit test: mismatched hash → install fails with clear error naming expected vs actual
+- [ ] Unit test: missing `[integrity]` section → install proceeds with warning "no integrity hash provided"
 
 #### Tests
 - [ ] Unit test: `--version` output parses correctly
@@ -1088,6 +1114,16 @@
 - [ ] Benchmark: index project on DrvFs path (`/mnt/c/...`) under WSL2
 - [ ] Document: DrvFs performance gap and recommendation (keep projects on Linux filesystem)
 - [ ] Warning: emit warning if project root is on `/mnt/` path
+
+#### Git ref watcher — reindex on branch switch
+- [ ] Watch `.git/HEAD` via `notify` file watcher (same watcher infrastructure as workspace)
+- [ ] On `.git/HEAD` change: trigger `Indexer::index_project()` full reindex
+- [ ] Debounce: ignore rapid `.git/HEAD` writes during rebase (500ms window)
+- [ ] Log: "Branch changed to `<ref>`, reindexing project"
+- [ ] If `.git/HEAD` does not exist (not a git repo): skip, no error
+- [ ] Unit test: simulate `.git/HEAD` write → verify `index_project()` called
+- [ ] Unit test: non-git directory → watcher setup skipped gracefully
+- [ ] Integration test: `git checkout` on test repo → vector store contains chunks from new branch, not old
 
 ---
 
@@ -1775,7 +1811,7 @@
 > **Gate:** Announcement posted on all channels; Indonesian-language resources live; at least one community response
 
 #### Content creation
-- [ ] Announcement post written in English — covers: what idep is, why local-first matters, how to contribute
+- [ ] Announcement post written in English — leads with ~2GB RAM floor (vs Cursor 4–8GB, Antigravity 16GB), then covers: what idep is, why local-first matters, how to contribute
 - [ ] Indonesian-language version translated and reviewed by native speaker
 - [ ] `README.md` includes Indonesian translation section (`## Tentang idep`)
 - [ ] `docs/getting-started-id.md` — Indonesian-language getting started guide
@@ -1799,6 +1835,8 @@
   - [ ] Performance expectations on low-spec hardware (measured)
   - [ ] Tips: disable GUI renderer, use TUI mode for lower memory footprint
 - [ ] Verified: TUI mode runs on 4GB RAM machine without swapping
+- [ ] Benchmark: measure actual peak RSS on 4GB RAM machine running TUI + Ollama `deepseek-coder:1.3b`
+- [ ] Include benchmark numbers in announcement post and `docs/low-spec-setup.md`
 
 #### Community response tracking
 - [ ] Monitor: GitHub stars, issues, Discord joins, Reddit upvotes for 2 weeks post-announcement
