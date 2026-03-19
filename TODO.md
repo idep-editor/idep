@@ -260,9 +260,9 @@
 - [x] Unit test: chunk a real TS file, verify expected nodes extracted
 
 #### Python chunking
-- [ ] Extract `def` functions
-- [ ] Extract `class` definitions
-- [ ] Unit test: chunk a real Python file, verify expected nodes extracted
+- [x] Extract `def` functions
+- [x] Extract `class` definitions
+- [x] Unit test: chunk a real Python file, verify expected nodes extracted
 
 #### General
 - [ ] Graceful fallback: unknown language → naive line chunking (configurable chunk size)

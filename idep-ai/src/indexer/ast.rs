@@ -247,4 +247,46 @@ type Alias = { a: number };
         assert!(names("interface").contains(&"IFoo".to_string()));
         assert!(names("type").contains(&"Alias".to_string()));
     }
+
+    #[test]
+    fn chunks_python_items_with_names() {
+        let source = r#"
+class Foo:
+    def __init__(self):
+        pass
+
+    def bar(self):
+        pass
+
+def top():
+    pass
+"#;
+
+        let path = PathBuf::from("dummy.py");
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk(&path, source).expect("chunk");
+
+        let mut by_kind = std::collections::HashMap::new();
+        for c in chunks {
+            by_kind
+                .entry(c.kind.clone())
+                .or_insert_with(Vec::new)
+                .push(c);
+        }
+
+        let names = |kind: &str| -> Vec<String> {
+            by_kind
+                .get(kind)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|c| c.name.clone())
+                .collect()
+        };
+
+        assert!(names("class").contains(&"Foo".to_string()));
+        let fn_names = names("function");
+        assert!(fn_names.contains(&"__init__".to_string()));
+        assert!(fn_names.contains(&"bar".to_string()));
+        assert!(fn_names.contains(&"top".to_string()));
+    }
 }
