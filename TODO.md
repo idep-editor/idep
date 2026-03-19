@@ -265,10 +265,10 @@
 - [x] Unit test: chunk a real Python file, verify expected nodes extracted
 
 #### General
-- [ ] Graceful fallback: unknown language → naive line chunking (configurable chunk size)
-- [ ] Respect max chunk size (configurable, default 512 tokens estimated)
-- [ ] Split oversized nodes at logical boundaries
-- [ ] Unit test: oversized function split correctly
+- [x] Graceful fallback: unknown language → naive line chunking (configurable chunk size)
+- [x] Respect max chunk size (configurable, default 512 tokens estimated)
+- [x] Split oversized nodes at logical boundaries
+- [x] Unit test: oversized function split correctly
 
 ---
 
