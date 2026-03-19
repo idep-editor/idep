@@ -211,24 +211,24 @@
 #### `idep-lsp` — Diagnostics
 - [x] Handle `textDocument/publishDiagnostics` notification
 - [x] Parse `Diagnostic[]`: range, severity, message, code
-- [ ] Store diagnostics per document URI
-- [ ] Expose `get_diagnostics(uri) -> Vec<Diagnostic>` API
-- [ ] Clear stale diagnostics on `didClose`
-- [ ] Unit test: mock server publishes diagnostics, verify stored correctly
+- [x] Store diagnostics per document URI
+- [x] Expose `get_diagnostics(uri) -> Vec<Diagnostic>` API
+- [x] Clear stale diagnostics on `didClose`
+- [x] Unit test: mock server publishes diagnostics, verify stored correctly
 - [ ] Integration test: open file with intentional error, verify diagnostic received
 
 #### `idep-lsp` — Hover
-- [ ] `textDocument/hover` request builder
-- [ ] Parse `Hover` response: `MarkupContent` (plaintext or markdown)
-- [ ] Return `Option<String>` hover text
-- [ ] Unit test: mock hover response parsed correctly
+- [x] `textDocument/hover` request builder
+- [x] Parse `Hover` response: `MarkupContent` (plaintext or markdown)
+- [x] Return `Option<String>` hover text
+- [x] Unit test: mock hover response parsed correctly
 - [ ] Integration test: hover over a Rust symbol, get type info
 
 #### `idep-lsp` — Goto Definition
-- [ ] `textDocument/definition` request builder
-- [ ] Parse `Location` / `LocationLink[]` response
-- [ ] Return `Vec<Location>`: URI + range
-- [ ] Unit test: mock response parsed correctly
+- [x] `textDocument/definition` request builder
+- [x] Parse `Location` / `LocationLink[]` response
+- [x] Return `Vec<Location>`: URI + range
+- [x] Unit test: mock response parsed correctly
 - [ ] Integration test: goto definition resolves to correct file + line
 
 ---

@@ -217,6 +217,35 @@ impl LspClient {
         Ok(Some(hover))
     }
 
+    pub fn hover_to_plain_text(hover: &Hover) -> Option<String> {
+        match &hover.contents {
+            lsp_types::HoverContents::Scalar(marked_string) => match marked_string {
+                lsp_types::MarkedString::String(text) => Some(text.clone()),
+                lsp_types::MarkedString::LanguageString(ls) => Some(ls.value.clone()),
+            },
+            lsp_types::HoverContents::Array(items) => {
+                let mut lines = Vec::new();
+                for item in items {
+                    match item {
+                        lsp_types::MarkedString::String(text) => lines.push(text.clone()),
+                        lsp_types::MarkedString::LanguageString(ls) => lines.push(ls.value.clone()),
+                    }
+                }
+                if lines.is_empty() {
+                    None
+                } else {
+                    Some(lines.join("\n"))
+                }
+            }
+            lsp_types::HoverContents::Markup(content) => Some(content.value.clone()),
+        }
+    }
+
+    pub async fn hover_text(&mut self, uri: Url, position: Position) -> Result<Option<String>> {
+        let hover = self.hover(uri, position).await?;
+        Ok(hover.as_ref().and_then(Self::hover_to_plain_text))
+    }
+
     /// textDocument/definition helper.
     pub async fn goto_definition(
         &mut self,
@@ -240,6 +269,35 @@ impl LspClient {
         let resp: GotoDefinitionResponse =
             serde_json::from_value(val).context("Failed to decode goto definition response")?;
         Ok(Some(resp))
+    }
+
+    pub fn flatten_goto_definition_response(
+        response: GotoDefinitionResponse,
+    ) -> Vec<lsp_types::Location> {
+        match response {
+            GotoDefinitionResponse::Scalar(loc) => vec![loc],
+            GotoDefinitionResponse::Array(locs) => locs,
+            GotoDefinitionResponse::Link(links) => links
+                .into_iter()
+                .map(|link| lsp_types::Location {
+                    uri: link.target_uri,
+                    range: link.target_selection_range,
+                })
+                .collect(),
+        }
+    }
+
+    pub async fn goto_definition_locations(
+        &mut self,
+        uri: Url,
+        position: Position,
+    ) -> Result<Vec<lsp_types::Location>> {
+        let resp = self.goto_definition(uri, position).await?;
+        if let Some(resp) = resp {
+            Ok(Self::flatten_goto_definition_response(resp))
+        } else {
+            Ok(vec![])
+        }
     }
 
     /// textDocument/completion helper.
@@ -415,6 +473,55 @@ mod tests {
         let id1 = client.next_id();
         let id2 = client.next_id();
         assert_eq!(id1 + 1, id2);
+    }
+
+    #[test]
+    fn test_hover_to_plain_text_markup() {
+        let hover = Hover {
+            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: "**int**`. `i32`".to_string(),
+            }),
+            range: None,
+        };
+        let text = LspClient::hover_to_plain_text(&hover);
+        assert_eq!(text, Some("**int**`. `i32`".to_string()));
+    }
+
+    #[test]
+    fn test_hover_to_plain_text_language_string() {
+        let hover = Hover {
+            contents: lsp_types::HoverContents::Scalar(lsp_types::MarkedString::LanguageString(
+                lsp_types::LanguageString {
+                    language: "rust".into(),
+                    value: "fn foo() -> i32".into(),
+                },
+            )),
+            range: None,
+        };
+        let text = LspClient::hover_to_plain_text(&hover);
+        assert_eq!(text, Some("fn foo() -> i32".into()));
+    }
+
+    #[test]
+    fn test_flatten_goto_definition_response() {
+        let location = lsp_types::Location {
+            uri: Url::parse("file:///tmp/main.rs").unwrap(),
+            range: lsp_types::Range {
+                start: lsp_types::Position {
+                    line: 1,
+                    character: 2,
+                },
+                end: lsp_types::Position {
+                    line: 1,
+                    character: 5,
+                },
+            },
+        };
+        let response = GotoDefinitionResponse::Scalar(location.clone());
+        let resolved = LspClient::flatten_goto_definition_response(response);
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0], location);
     }
 
     #[tokio::test]

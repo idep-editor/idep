@@ -4,8 +4,8 @@ use lsp_types::notification::{
     Notification,
 };
 use lsp_types::{
-    Diagnostic, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-    VersionedTextDocumentIdentifier,
+    Diagnostic, Location, Position, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, Url, VersionedTextDocumentIdentifier,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
@@ -114,6 +114,22 @@ impl DocumentManager {
 
         let mut client = self.client.lock().await;
         client.notify(DidCloseTextDocument::METHOD, params).await
+    }
+
+    pub async fn hover_text(&self, uri: Url, position: Position) -> Result<Option<String>> {
+        let server_uri = to_server_uri(&uri);
+        let mut client = self.client.lock().await;
+        client.hover_text(server_uri, position).await
+    }
+
+    pub async fn goto_definition_locations(
+        &self,
+        uri: Url,
+        position: Position,
+    ) -> Result<Vec<Location>> {
+        let server_uri = to_server_uri(&uri);
+        let mut client = self.client.lock().await;
+        client.goto_definition_locations(server_uri, position).await
     }
 }
 
