@@ -5,12 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.6
+## [Unreleased] — v0.0.7
 
 ### Planned
-- Tree-sitter AST chunking
-- Debugging/hover integration in TUI
-- Stability and perf improvements
+- Local embeddings pipeline (fastembed)
+- Vector index + query (usearch)
+- RAG context injection in chat
+
+---
+
+## [v0.0.6] — 2026-03-19
+
+### Added
+- **Tree-sitter AST chunking** for Rust, TypeScript, and Python with labeled spans and names
+- `AstChunker` and `Chunk` types, integrated into indexer with AST-first chunking
+- TypeScript/Python chunk extraction tests (functions, classes, interfaces, type aliases)
+- Oversized chunk splitting with default max size (512 chars)
+
+### Fixed
+- Graceful fallback to naive line chunking for unsupported languages or parse failures
+- Deterministic chunk naming propagation into CodeChunk
+
+### Changed
+- Indexer now uses AST chunking by default, with configurable fallback chunk size
 
 ---
 

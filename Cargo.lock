@@ -1050,7 +1050,7 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "idep-ai"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "idep-core"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "idep-index"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "serde",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "idep-lsp"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "idep-plugin"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "serde",
