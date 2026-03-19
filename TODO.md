@@ -210,7 +210,7 @@
 
 #### `idep-lsp` — Diagnostics
 - [x] Handle `textDocument/publishDiagnostics` notification
-- [ ] Parse `Diagnostic[]`: range, severity, message, code
+- [x] Parse `Diagnostic[]`: range, severity, message, code
 - [ ] Store diagnostics per document URI
 - [ ] Expose `get_diagnostics(uri) -> Vec<Diagnostic>` API
 - [ ] Clear stale diagnostics on `didClose`

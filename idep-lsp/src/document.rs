@@ -160,4 +160,52 @@ mod tests {
         docs.handle_publish_diagnostics(params);
         assert_eq!(docs.get_diagnostics(&uri).len(), 1);
     }
+
+    #[tokio::test]
+    async fn diagnostics_fields_are_preserved() {
+        let dummy = LspClient::spawn("echo", &["test"]).expect("spawn dummy");
+        let client = Arc::new(Mutex::new(dummy));
+        let mut docs = DocumentManager::new(client);
+
+        let uri = Url::parse("file:///tmp/test.rs").unwrap();
+        let params = PublishDiagnosticsParams {
+            uri: uri.clone(),
+            version: Some(1),
+            diagnostics: vec![Diagnostic {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: 2,
+                        character: 4,
+                    },
+                    end: lsp_types::Position {
+                        line: 2,
+                        character: 9,
+                    },
+                },
+                severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+                code: Some(lsp_types::NumberOrString::String("E100".into())),
+                code_description: None,
+                source: Some("test-lsp".into()),
+                message: "unexpected token".into(),
+                related_information: None,
+                tags: None,
+                data: None,
+            }],
+        };
+
+        docs.handle_publish_diagnostics(params);
+        let diags = docs.get_diagnostics(&uri);
+        assert_eq!(diags.len(), 1);
+        let diag = &diags[0];
+        assert_eq!(diag.message, "unexpected token");
+        assert_eq!(diag.severity, Some(lsp_types::DiagnosticSeverity::WARNING));
+        assert_eq!(
+            diag.code,
+            Some(lsp_types::NumberOrString::String("E100".into()))
+        );
+        assert_eq!(diag.range.start.line, 2);
+        assert_eq!(diag.range.start.character, 4);
+        assert_eq!(diag.range.end.line, 2);
+        assert_eq!(diag.range.end.character, 9);
+    }
 }
