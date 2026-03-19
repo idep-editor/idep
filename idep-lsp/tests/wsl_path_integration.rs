@@ -9,23 +9,30 @@ use lsp_types::{
 };
 use tokio::sync::Mutex;
 
-// Ignored by default: requires rust-analyzer in PATH and WSL /mnt/c filesystem.
+// Integration test: runs only when RUN_WSL_RA_TEST=1 and /mnt/c exists.
 #[tokio::test]
-#[ignore = "requires rust-analyzer and WSL /mnt/c; set RUN_WSL_RA_TEST=1 to run"]
 async fn resolves_definition_under_mnt_c() -> Result<()> {
     if std::env::var("RUN_WSL_RA_TEST").unwrap_or_default() != "1" {
         return Ok(());
     }
 
-    if !std::path::Path::new("/mnt/c").exists() {
+    // Run only in real WSL environments with /mnt/c.
+    if !is_wsl() {
+        eprintln!("Skipping WSL RA test: not running in WSL");
         return Ok(());
     }
 
-    // Ensure rust-analyzer is available
-    Command::new("rust-analyzer")
-        .arg("--version")
-        .output()
-        .context("rust-analyzer not found in PATH")?;
+    if !std::path::Path::new("/mnt/c").exists() {
+        eprintln!("Skipping WSL RA test: /mnt/c does not exist");
+        return Ok(());
+    }
+
+    // Ensure rust-analyzer is available. Skip if not installed.
+    let version_out = Command::new("rust-analyzer").arg("--version").output();
+    if version_out.is_err() || !version_out.unwrap().status.success() {
+        eprintln!("Skipping WSL RA test: rust-analyzer not available");
+        return Ok(());
+    }
 
     // Create a workspace under /mnt/c
     let dir = tempfile::TempDir::new_in("/mnt/c").context("tempdir in /mnt/c")?;
@@ -100,6 +107,16 @@ members = []
     }
 
     Ok(())
+}
+
+fn is_wsl() -> bool {
+    if std::env::var("WSL_DISTRO_NAME").is_ok() {
+        return true;
+    }
+    if let Ok(version) = std::fs::read_to_string("/proc/version") {
+        return version.to_lowercase().contains("microsoft");
+    }
+    false
 }
 
 // Helper to avoid clippy literal out of range on Position

@@ -209,7 +209,7 @@
 > **Gate:** Diagnostics received, hover response parsed, goto-definition resolves a location
 
 #### `idep-lsp` — Diagnostics
-- [ ] Handle `textDocument/publishDiagnostics` notification
+- [x] Handle `textDocument/publishDiagnostics` notification
 - [ ] Parse `Diagnostic[]`: range, severity, message, code
 - [ ] Store diagnostics per document URI
 - [ ] Expose `get_diagnostics(uri) -> Vec<Diagnostic>` API

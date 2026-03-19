@@ -4,25 +4,27 @@ use lsp_types::notification::{
     Notification,
 };
 use lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams,
+    Diagnostic, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
+    VersionedTextDocumentIdentifier,
 };
 use lsp_types::{
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-    VersionedTextDocumentIdentifier,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, PublishDiagnosticsParams,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::client::LspClient;
+use crate::diagnostics::DiagnosticsManager;
 use crate::path::to_server_uri;
 
-/// Tracks open documents and proxies LSP textDocument notifications.
+/// Tracks open documents, diagnostics, and proxies LSP textDocument notifications.
 pub struct DocumentManager {
     pub client: Arc<Mutex<LspClient>>,
     pub open_documents: HashMap<Url, TextDocumentItem>,
     pub versions: HashMap<Url, i32>,
+    diagnostics: DiagnosticsManager,
 }
 
 impl DocumentManager {
@@ -31,7 +33,16 @@ impl DocumentManager {
             client,
             open_documents: HashMap::new(),
             versions: HashMap::new(),
+            diagnostics: DiagnosticsManager::new(),
         }
+    }
+
+    pub fn handle_publish_diagnostics(&mut self, params: PublishDiagnosticsParams) {
+        self.diagnostics.handle_publish_diagnostics(params);
+    }
+
+    pub fn get_diagnostics(&self, uri: &Url) -> &[Diagnostic] {
+        self.diagnostics.get_diagnostics(uri)
     }
 
     pub async fn did_open(&mut self, _uri: Url, _language_id: String, _text: String) -> Result<()> {
@@ -93,6 +104,7 @@ impl DocumentManager {
     pub async fn did_close(&mut self, _uri: Url) -> Result<()> {
         self.open_documents.remove(&_uri);
         self.versions.remove(&_uri);
+        self.diagnostics.clear(&_uri);
 
         let server_uri = to_server_uri(&_uri);
 
@@ -102,5 +114,50 @@ impl DocumentManager {
 
         let mut client = self.client.lock().await;
         client.notify(DidCloseTextDocument::METHOD, params).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsp_types::{Diagnostic, PublishDiagnosticsParams, Url};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // This just tests diagnostics storage behavior independent of LSP I/O.
+    #[tokio::test]
+    async fn stores_and_retrieves_diagnostics_for_uri() {
+        let dummy = LspClient::spawn("echo", &["test"]).expect("spawn dummy");
+        let client = Arc::new(Mutex::new(dummy));
+        let mut docs = DocumentManager::new(client);
+
+        let uri = Url::parse("file:///tmp/test.rs").unwrap();
+        let params = PublishDiagnosticsParams {
+            uri: uri.clone(),
+            version: None,
+            diagnostics: vec![Diagnostic {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: 0,
+                        character: 1,
+                    },
+                },
+                severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("test".into()),
+                message: "error".into(),
+                related_information: None,
+                tags: None,
+                data: None,
+            }],
+        };
+
+        docs.handle_publish_diagnostics(params);
+        assert_eq!(docs.get_diagnostics(&uri).len(), 1);
     }
 }

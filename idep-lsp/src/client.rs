@@ -353,6 +353,23 @@ impl LspClient {
             }
         }
     }
+
+    /// Read the next raw JSON-RPC message from the server.
+    pub async fn read_raw_message(&mut self) -> Result<Message> {
+        self.read_message().await
+    }
+
+    /// Read notifications from the server. This will skip responses until it finds
+    /// a notification.
+    pub async fn read_notification(&mut self) -> Result<Notification> {
+        loop {
+            match self.read_message().await? {
+                Message::Notification(notif) => return Ok(notif),
+                Message::Response(_) => continue,
+                Message::Request(_) => continue,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
