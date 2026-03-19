@@ -1,7 +1,7 @@
 use std::fs;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use idep_lsp::{client::LspClient, document::DocumentManager};
 use lsp_types::request::{Completion, Request};
 use lsp_types::{
@@ -14,7 +14,10 @@ async fn read_next_notification(
     client: &Arc<Mutex<LspClient>>,
 ) -> Result<lsp_server::Notification> {
     let mut c = client.lock().await;
-    c.read_notification().await
+    tokio::time::timeout(std::time::Duration::from_secs(5), c.read_notification())
+        .await
+        .context("timed out waiting for LSP notification")?
+        .context("failed to read LSP notification")
 }
 
 #[tokio::test]

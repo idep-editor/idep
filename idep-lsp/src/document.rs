@@ -37,26 +37,28 @@ impl DocumentManager {
         }
     }
 
-    pub fn handle_publish_diagnostics(&mut self, params: PublishDiagnosticsParams) {
+    pub fn handle_publish_diagnostics(&mut self, mut params: PublishDiagnosticsParams) {
+        params.uri = to_server_uri(&params.uri);
         self.diagnostics.handle_publish_diagnostics(params);
     }
 
     pub fn get_diagnostics(&self, uri: &Url) -> &[Diagnostic] {
-        self.diagnostics.get_diagnostics(uri)
+        let server_uri = to_server_uri(uri);
+        self.diagnostics.get_diagnostics(&server_uri)
     }
 
-    pub async fn did_open(&mut self, _uri: Url, _language_id: String, _text: String) -> Result<()> {
+    pub async fn did_open(&mut self, uri: Url, language_id: String, text: String) -> Result<()> {
         let version = 1;
-        let server_uri = to_server_uri(&_uri);
+        let server_uri = to_server_uri(&uri);
         let item = TextDocumentItem {
             uri: server_uri.clone(),
-            language_id: _language_id.clone(),
+            language_id: language_id.clone(),
             version,
-            text: _text.clone(),
+            text: text.clone(),
         };
 
-        self.open_documents.insert(_uri.clone(), item.clone());
-        self.versions.insert(_uri.clone(), version);
+        self.open_documents.insert(uri.clone(), item.clone());
+        self.versions.insert(uri.clone(), version);
 
         let params = DidOpenTextDocumentParams {
             text_document: item,
@@ -68,13 +70,13 @@ impl DocumentManager {
 
     pub async fn did_change(
         &mut self,
-        _uri: Url,
-        _changes: Vec<TextDocumentContentChangeEvent>,
+        uri: Url,
+        changes: Vec<TextDocumentContentChangeEvent>,
     ) -> Result<()> {
-        let next_version = self.versions.get(&_uri).copied().unwrap_or(0) + 1;
-        self.versions.insert(_uri.clone(), next_version);
+        let next_version = self.versions.get(&uri).copied().unwrap_or(0) + 1;
+        self.versions.insert(uri.clone(), next_version);
 
-        let server_uri = to_server_uri(&_uri);
+        let server_uri = to_server_uri(&uri);
 
         let identifier = VersionedTextDocumentIdentifier {
             uri: server_uri,
@@ -83,15 +85,15 @@ impl DocumentManager {
 
         let params = DidChangeTextDocumentParams {
             text_document: identifier,
-            content_changes: _changes,
+            content_changes: changes,
         };
 
         let mut client = self.client.lock().await;
         client.notify(DidChangeTextDocument::METHOD, params).await
     }
 
-    pub async fn did_save(&mut self, _uri: Url) -> Result<()> {
-        let server_uri = to_server_uri(&_uri);
+    pub async fn did_save(&mut self, uri: Url) -> Result<()> {
+        let server_uri = to_server_uri(&uri);
         let params = DidSaveTextDocumentParams {
             text_document: TextDocumentIdentifier { uri: server_uri },
             text: None,
@@ -101,12 +103,12 @@ impl DocumentManager {
         client.notify(DidSaveTextDocument::METHOD, params).await
     }
 
-    pub async fn did_close(&mut self, _uri: Url) -> Result<()> {
-        self.open_documents.remove(&_uri);
-        self.versions.remove(&_uri);
-        self.diagnostics.clear(&_uri);
+    pub async fn did_close(&mut self, uri: Url) -> Result<()> {
+        self.open_documents.remove(&uri);
+        self.versions.remove(&uri);
+        self.diagnostics.clear(&to_server_uri(&uri));
 
-        let server_uri = to_server_uri(&_uri);
+        let server_uri = to_server_uri(&uri);
 
         let params = DidCloseTextDocumentParams {
             text_document: TextDocumentIdentifier { uri: server_uri },
@@ -223,5 +225,44 @@ mod tests {
         assert_eq!(diag.range.start.character, 4);
         assert_eq!(diag.range.end.line, 2);
         assert_eq!(diag.range.end.character, 9);
+    }
+
+    #[tokio::test]
+    async fn did_close_clears_diagnostics() {
+        let dummy = LspClient::spawn("sleep", &["1"]).expect("spawn dummy");
+        let client = Arc::new(Mutex::new(dummy));
+        let mut docs = DocumentManager::new(client);
+
+        let uri = Url::parse("file:///tmp/test.rs").unwrap();
+        let params = PublishDiagnosticsParams {
+            uri: uri.clone(),
+            version: None,
+            diagnostics: vec![Diagnostic {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: 0,
+                        character: 1,
+                    },
+                },
+                severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("test".into()),
+                message: "err".into(),
+                related_information: None,
+                tags: None,
+                data: None,
+            }],
+        };
+
+        docs.handle_publish_diagnostics(params);
+        assert_eq!(docs.get_diagnostics(&uri).len(), 1);
+
+        docs.did_close(uri.clone()).await.expect("did_close");
+        assert!(docs.get_diagnostics(&uri).is_empty());
     }
 }
