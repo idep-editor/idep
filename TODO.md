@@ -233,7 +233,7 @@
 
 ---
 
-### 🔴 v0.0.6 — Tree-sitter AST Chunking
+### ✅ v0.0.6 — Tree-sitter AST Chunking
 > **Gate:** Rust, TypeScript, and Python source files chunked into labeled AST nodes with correct spans
 
 #### `idep-ai` — Tree-sitter integration

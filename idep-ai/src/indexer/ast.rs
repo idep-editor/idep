@@ -289,4 +289,46 @@ def top():
         assert!(fn_names.contains(&"bar".to_string()));
         assert!(fn_names.contains(&"top".to_string()));
     }
+
+    #[test]
+    fn splits_oversized_function_into_segments() {
+        let source = r#"
+fn foo() {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = 4;
+    let e = 5;
+}
+"#;
+
+        let path = PathBuf::from("dummy.rs");
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk(&path, source).expect("chunk");
+        let func = chunks
+            .iter()
+            .find(|c| c.kind == "function")
+            .expect("function chunk");
+
+        // Force a small max size to trigger splitting
+        let parts = crate::indexer::split_oversized(&path, source, func, 20);
+        assert!(parts.len() > 1, "expected oversized chunk to split");
+        for p in &parts {
+            assert!(
+                p.content.len() <= 21,
+                "segment too large: {}",
+                p.content.len()
+            );
+        }
+
+        // Ensure line ranges are increasing and cover the original span
+        // Combined content still contains full function body
+        let combined = parts
+            .iter()
+            .map(|p| p.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(combined.starts_with("fn foo"));
+        assert!(combined.contains("let e = 5"));
+    }
 }

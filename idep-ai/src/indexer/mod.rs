@@ -48,6 +48,7 @@ pub struct IndexResult {
 pub struct Indexer {
     root: PathBuf,
     chunks: Vec<CodeChunk>,
+    fallback_chunk_size: usize,
 }
 
 impl Indexer {
@@ -55,13 +56,15 @@ impl Indexer {
         Self {
             root: root.as_ref().to_path_buf(),
             chunks: Vec::new(),
+            // Default approx tokens: 512 chars as rough heuristic
+            fallback_chunk_size: 512,
         }
     }
 
     /// Walk the project and index all source files
     pub async fn index(&mut self) -> Result<usize> {
         self.chunks.clear();
-        let chunks = walk_and_chunk(&self.root)?;
+        let chunks = walk_and_chunk(&self.root, self.fallback_chunk_size)?;
         let count = chunks.len();
         self.chunks = chunks;
         tracing::info!("Indexed {} chunks from {}", count, self.root.display());
@@ -71,7 +74,7 @@ impl Indexer {
     /// Re-index a single file (called on save)
     pub async fn reindex_file(&mut self, path: &Path) -> Result<()> {
         self.chunks.retain(|c| c.file != path);
-        let new_chunks = chunk_file(path)?;
+        let new_chunks = chunk_file(path, self.fallback_chunk_size)?;
         self.chunks.extend(new_chunks);
         Ok(())
     }
@@ -125,7 +128,7 @@ impl Indexer {
 }
 
 /// Walk a directory and chunk all Rust/TS/Python source files
-fn walk_and_chunk(root: &Path) -> Result<Vec<CodeChunk>> {
+fn walk_and_chunk(root: &Path, fallback_chunk_size: usize) -> Result<Vec<CodeChunk>> {
     let mut chunks = Vec::new();
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)
@@ -135,7 +138,7 @@ fn walk_and_chunk(root: &Path) -> Result<Vec<CodeChunk>> {
     {
         let path = entry.path();
         if is_source_file(path) {
-            if let Ok(file_chunks) = chunk_file(path) {
+            if let Ok(file_chunks) = chunk_file(path, fallback_chunk_size) {
                 chunks.extend(file_chunks);
             }
         }
@@ -150,7 +153,7 @@ fn is_source_file(path: &Path) -> bool {
     )
 }
 
-fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
+fn chunk_file(path: &Path, fallback_chunk_size: usize) -> Result<Vec<CodeChunk>> {
     let content = std::fs::read_to_string(path)?;
 
     // Try AST-aware chunking; if unsupported language or parse fails, fall back to naive.
@@ -158,11 +161,11 @@ fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
         .chunk(path, &content)
         .unwrap_or_else(|_| Vec::new());
     let chunks = if ast_chunks.is_empty() {
-        naive_chunk(path, &content)
+        naive_chunk(path, &content, fallback_chunk_size)
     } else {
         ast_chunks
             .into_iter()
-            .map(|c| code_chunk_from_ast(path, &content, &c))
+            .flat_map(|c| split_oversized(path, &content, &c, fallback_chunk_size))
             .collect()
     };
 
@@ -170,9 +173,8 @@ fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
 }
 
 /// Naive line-based chunking (fallback)
-fn naive_chunk(path: &Path, content: &str) -> Vec<CodeChunk> {
+fn naive_chunk(path: &Path, content: &str, chunk_size: usize) -> Vec<CodeChunk> {
     let lines: Vec<&str> = content.lines().collect();
-    let chunk_size = 40;
     let overlap = 5;
     let mut chunks = Vec::new();
     let mut i = 0;
@@ -194,6 +196,62 @@ fn naive_chunk(path: &Path, content: &str) -> Vec<CodeChunk> {
     }
 
     chunks
+}
+
+pub(crate) fn split_oversized(
+    path: &Path,
+    source: &str,
+    chunk: &Chunk,
+    max_size: usize,
+) -> Vec<CodeChunk> {
+    if chunk.text.len() <= max_size {
+        return vec![code_chunk_from_ast(path, source, chunk)];
+    }
+
+    let line_offsets = line_offsets(source);
+    let start_line = byte_to_line(chunk.start_byte, &line_offsets);
+    let lines: Vec<&str> = chunk.text.lines().collect();
+
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let mut size = 0;
+        let mut j = i;
+        while j < lines.len() {
+            let line_len = lines[j].len() + 1; // include newline
+            if j > i && size + line_len > max_size {
+                break;
+            }
+            size += line_len;
+            j += 1;
+        }
+
+        let segment = lines[i..j].join("\n");
+        let seg_start_line = start_line + i;
+        let seg_end_line = start_line + j - 1;
+
+        result.push(CodeChunk {
+            file: path.to_path_buf(),
+            content: segment,
+            start_line: seg_start_line,
+            end_line: seg_end_line,
+            kind: match chunk.kind.as_str() {
+                "function" => ChunkKind::Function,
+                "struct" => ChunkKind::Struct,
+                "impl" => ChunkKind::Impl,
+                "trait" => ChunkKind::Trait,
+                _ => ChunkKind::Other,
+            },
+            name: chunk.name.clone(),
+        });
+
+        if j == lines.len() {
+            break;
+        }
+        i = j;
+    }
+
+    result
 }
 
 fn code_chunk_from_ast(path: &Path, source: &str, chunk: &Chunk) -> CodeChunk {
