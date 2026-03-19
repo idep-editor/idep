@@ -215,21 +215,21 @@
 - [x] Expose `get_diagnostics(uri) -> Vec<Diagnostic>` API
 - [x] Clear stale diagnostics on `didClose`
 - [x] Unit test: mock server publishes diagnostics, verify stored correctly
-- [ ] Integration test: open file with intentional error, verify diagnostic received
+- [x] Integration test: open file with intentional error, verify diagnostic received
 
 #### `idep-lsp` — Hover
 - [x] `textDocument/hover` request builder
 - [x] Parse `Hover` response: `MarkupContent` (plaintext or markdown)
 - [x] Return `Option<String>` hover text
 - [x] Unit test: mock hover response parsed correctly
-- [ ] Integration test: hover over a Rust symbol, get type info
+- [x] Integration test: hover over a Rust symbol, get type info
 
 #### `idep-lsp` — Goto Definition
 - [x] `textDocument/definition` request builder
 - [x] Parse `Location` / `LocationLink[]` response
 - [x] Return `Vec<Location>`: URI + range
 - [x] Unit test: mock response parsed correctly
-- [ ] Integration test: goto definition resolves to correct file + line
+- [x] Integration test: goto definition resolves to correct file + line
 
 ---
 
