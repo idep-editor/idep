@@ -237,20 +237,20 @@
 > **Gate:** Rust, TypeScript, and Python source files chunked into labeled AST nodes with correct spans
 
 #### `idep-ai` — Tree-sitter integration
-- [ ] Add `tree-sitter` + language grammars to `idep-ai` deps
-  - [ ] `tree-sitter-rust`
-  - [ ] `tree-sitter-typescript`
-  - [ ] `tree-sitter-python`
-- [ ] `AstChunker` struct: takes source text + language, returns `Vec<Chunk>`
-- [ ] `Chunk` type: `{ kind, name, start_byte, end_byte, text }`
+- [x] Add `tree-sitter` + language grammars to `idep-ai` deps
+  - [x] `tree-sitter-rust`
+  - [x] `tree-sitter-typescript`
+  - [x] `tree-sitter-python`
+- [x] `AstChunker` struct: takes source text + language, returns `Vec<Chunk>`
+- [x] `Chunk` type: `{ kind, name, start_byte, end_byte, text }`
 
 #### Rust chunking
-- [ ] Extract `fn` items (name, signature, body)
-- [ ] Extract `impl` blocks (type name, methods)
-- [ ] Extract `struct` definitions
-- [ ] Extract `trait` definitions
-- [ ] Extract `enum` definitions
-- [ ] Unit test: chunk a real Rust file, verify expected nodes extracted
+- [x] Extract `fn` items (name, signature, body)
+- [x] Extract `impl` blocks (type name, methods)
+- [x] Extract `struct` definitions
+- [x] Extract `trait` definitions
+- [x] Extract `enum` definitions
+- [x] Unit test: chunk a real Rust file, verify expected nodes extracted
 
 #### TypeScript chunking
 - [ ] Extract `function` declarations

@@ -10,6 +10,9 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+mod ast;
+use ast::{AstChunker, Chunk};
+
 /// A chunk of source code with its provenance
 #[derive(Debug, Clone)]
 pub struct CodeChunk {
@@ -18,6 +21,7 @@ pub struct CodeChunk {
     pub start_line: usize,
     pub end_line: usize,
     pub kind: ChunkKind,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,10 +150,27 @@ fn is_source_file(path: &Path) -> bool {
     )
 }
 
-/// Naive line-based chunking (Phase 1)
-/// Phase 2 will replace with tree-sitter AST chunking
 fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
     let content = std::fs::read_to_string(path)?;
+
+    // Try AST-aware chunking; if unsupported language or parse fails, fall back to naive.
+    let ast_chunks = AstChunker::new()
+        .chunk(path, &content)
+        .unwrap_or_else(|_| Vec::new());
+    let chunks = if ast_chunks.is_empty() {
+        naive_chunk(path, &content)
+    } else {
+        ast_chunks
+            .into_iter()
+            .map(|c| code_chunk_from_ast(path, &content, &c))
+            .collect()
+    };
+
+    Ok(chunks)
+}
+
+/// Naive line-based chunking (fallback)
+fn naive_chunk(path: &Path, content: &str) -> Vec<CodeChunk> {
     let lines: Vec<&str> = content.lines().collect();
     let chunk_size = 40;
     let overlap = 5;
@@ -164,6 +185,7 @@ fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
             start_line: i + 1,
             end_line: end,
             kind: ChunkKind::Other,
+            name: None,
         });
         if end == lines.len() {
             break;
@@ -171,5 +193,45 @@ fn chunk_file(path: &Path) -> Result<Vec<CodeChunk>> {
         i += chunk_size - overlap;
     }
 
-    Ok(chunks)
+    chunks
+}
+
+fn code_chunk_from_ast(path: &Path, source: &str, chunk: &Chunk) -> CodeChunk {
+    let line_offsets = line_offsets(source);
+    let start_line = byte_to_line(chunk.start_byte, &line_offsets);
+    let end_line = byte_to_line(chunk.end_byte, &line_offsets);
+    let kind = match chunk.kind.as_str() {
+        "function" => ChunkKind::Function,
+        "struct" => ChunkKind::Struct,
+        "impl" => ChunkKind::Impl,
+        "trait" => ChunkKind::Trait,
+        _ => ChunkKind::Other,
+    };
+
+    CodeChunk {
+        file: path.to_path_buf(),
+        content: chunk.text.clone(),
+        start_line,
+        end_line,
+        kind,
+        name: chunk.name.clone(),
+    }
+}
+
+fn line_offsets(source: &str) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut acc = 0;
+    offsets.push(0);
+    for line in source.lines() {
+        acc += line.len() + 1; // include newline
+        offsets.push(acc);
+    }
+    offsets
+}
+
+fn byte_to_line(byte: usize, offsets: &[usize]) -> usize {
+    match offsets.binary_search(&byte) {
+        Ok(idx) => idx + 1,
+        Err(idx) => idx, // idx is insertion point; line numbers are 1-based
+    }
 }
