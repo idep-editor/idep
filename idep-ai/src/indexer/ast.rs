@@ -204,4 +204,47 @@ fn top() {}
         assert!(fn_names.contains(&"new".to_string()));
         assert!(fn_names.contains(&"bar".to_string()));
     }
+
+    #[test]
+    fn chunks_typescript_items_with_names() {
+        let source = r#"
+function top() {}
+
+class Foo {
+  bar() {}
+}
+
+interface IFoo {
+  baz(): void;
+}
+
+type Alias = { a: number };
+"#;
+
+        let path = PathBuf::from("dummy.ts");
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk(&path, source).expect("chunk");
+
+        let mut by_kind = std::collections::HashMap::new();
+        for c in chunks {
+            by_kind
+                .entry(c.kind.clone())
+                .or_insert_with(Vec::new)
+                .push(c);
+        }
+
+        let names = |kind: &str| -> Vec<String> {
+            by_kind
+                .get(kind)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|c| c.name.clone())
+                .collect()
+        };
+
+        assert!(names("function").contains(&"top".to_string()));
+        assert!(names("class").contains(&"Foo".to_string()));
+        assert!(names("interface").contains(&"IFoo".to_string()));
+        assert!(names("type").contains(&"Alias".to_string()));
+    }
 }

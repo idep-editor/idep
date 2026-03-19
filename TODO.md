@@ -253,11 +253,11 @@
 - [x] Unit test: chunk a real Rust file, verify expected nodes extracted
 
 #### TypeScript chunking
-- [ ] Extract `function` declarations
-- [ ] Extract `class` declarations
-- [ ] Extract `interface` declarations
-- [ ] Extract `type` alias declarations
-- [ ] Unit test: chunk a real TS file, verify expected nodes extracted
+- [x] Extract `function` declarations
+- [x] Extract `class` declarations
+- [x] Extract `interface` declarations
+- [x] Extract `type` alias declarations
+- [x] Unit test: chunk a real TS file, verify expected nodes extracted
 
 #### Python chunking
 - [ ] Extract `def` functions
