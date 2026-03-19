@@ -205,7 +205,7 @@
 
 ---
 
-### 🔴 v0.0.5 — LSP Diagnostics, Hover, Goto
+### ✅ v0.0.5 — LSP Diagnostics, Hover, Goto
 > **Gate:** Diagnostics received, hover response parsed, goto-definition resolves a location
 
 #### `idep-lsp` — Diagnostics

@@ -5,12 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.5
+## [Unreleased] — v0.0.6
 
 ### Planned
-- LSP diagnostics handling (`textDocument/publishDiagnostics`)
-- Hover and goto-definition support
-- Diagnostic storage and retrieval per document
+- Tree-sitter AST chunking
+- Debugging/hover integration in TUI
+- Stability and perf improvements
+
+---
+
+## [v0.0.5] — 2026-03-19
+
+### Added
+- **LSP diagnostics**: `textDocument/publishDiagnostics` handling and per-document diagnostic storage with retrieval API
+- **Hover support**: `textDocument/hover` request builder, response parsing, and plain-text extraction
+- **Goto definition**: `textDocument/definition` builder and normalized `Location` list from `Location` / `LocationLink`
+- WSL URI normalization applied consistently for all textDocument requests and diagnostics storage
+- Integration tests for Rust Analyzer: completions, hover, goto-definition, and diagnostics
+
+### Fixed
+- Normalized diagnostic URI lookups to avoid client/server URI format mismatches (WSL path forms)
+- Cleared stale diagnostics on `didClose` and added regression tests
+- Added backend timeout guard for integration notification polling to avoid indefinite hangs
+
+### Changed
+- `DocumentManager` now routes all provider URIs through `to_server_uri()` before sending and querying
+- `LspClient` hover text helper returns plain text for `MarkupContent` and `MarkedString` variants
+- Completed all v0.0.5 TODO milestones in `TODO.md`
 
 ---
 
