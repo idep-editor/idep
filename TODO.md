@@ -272,7 +272,7 @@
 
 ---
 
-### 🔴 v0.0.7 — Local Embeddings Pipeline
+### ✅ v0.0.7 — Local Embeddings Pipeline
 > **Gate:** `fastembed-rs` produces embeddings for a batch of chunks, no network calls, latency benchmarked
 
 #### `idep-index` — Embedder
@@ -286,11 +286,11 @@
 - [x] Verify: no outbound network calls during embed (network blocked in test)
 
 #### `idep-index` — Pipeline wiring
-- [ ] `EmbedPipeline::run(chunks: Vec<Chunk>) -> Vec<EmbeddedChunk>`
-- [ ] `EmbeddedChunk`: original `Chunk` + `Vec<f32>` embedding
-- [ ] Batch size configurable (default 32)
-- [ ] Progress callback for large batches
-- [ ] Unit test: pipeline produces one embedding per chunk
+- [x] `EmbedPipeline::run(chunks: Vec<Chunk>) -> Vec<EmbeddedChunk>`
+- [x] `EmbeddedChunk`: original `Chunk` + `Vec<f32>` embedding
+- [x] Batch size configurable (default 32)
+- [x] Progress callback for large batches
+- [x] Unit test: pipeline produces one embedding per chunk
 
 ---
 

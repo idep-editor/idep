@@ -1639,6 +1639,7 @@ dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "fastembed",
+ "idep-ai",
  "lazy_static",
  "serde",
  "serde_json",

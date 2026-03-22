@@ -24,7 +24,7 @@ pub struct CodeChunk {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChunkKind {
     Function,
     Struct,

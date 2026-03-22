@@ -51,5 +51,12 @@ dirs         = "5"
 # Embeddings
 fastembed    = "5"
 
+# Internal crates
+idep-core    = { path = "idep-core" }
+idep-ai      = { path = "idep-ai" }
+idep-lsp     = { path = "idep-lsp" }
+idep-plugin  = { path = "idep-plugin" }
+idep-index   = { path = "idep-index" }
+
 # WASM plugin runtime
 wasmtime     = { version = "21" }
