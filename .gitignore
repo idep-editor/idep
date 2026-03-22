@@ -9,3 +9,8 @@
 .vscode/
 .idea/
 .windsurf/
+
+# Model caches
+.fastembed_cache/
+*.onnx
+*.lock
