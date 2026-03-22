@@ -48,5 +48,8 @@ tree-sitter  = "0.22"
 toml         = "0.8"
 dirs         = "5"
 
+# Embeddings
+fastembed    = "5"
+
 # WASM plugin runtime
 wasmtime     = { version = "21" }

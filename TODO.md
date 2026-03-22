@@ -276,14 +276,14 @@
 > **Gate:** `fastembed-rs` produces embeddings for a batch of chunks, no network calls, latency benchmarked
 
 #### `idep-index` — Embedder
-- [ ] Add `fastembed` crate to `idep-index` deps
-- [ ] `Embedder` struct: wraps fastembed model
-- [ ] Model download on first run → cached to `~/.idep/models/`
-- [ ] `Embedder::embed_batch(texts: &[&str]) -> Vec<Vec<f32>>`
-- [ ] Embedding dimension asserted (e.g. 384 for `all-MiniLM-L6-v2`)
-- [ ] Unit test: embed a batch of 10 strings, verify shape
-- [ ] Benchmark: time to embed 100 chunks of ~200 tokens each
-- [ ] Verify: no outbound network calls during embed (network blocked in test)
+- [x] Add `fastembed` crate to `idep-index` deps
+- [x] `Embedder` struct: wraps fastembed model
+- [x] Model download on first run → cached to `~/.idep/models/`
+- [x] `Embedder::embed_batch(texts: &[&str]) -> Vec<Vec<f32>>`
+- [x] Embedding dimension asserted (e.g. 384 for `all-MiniLM-L6-v2`)
+- [x] Unit test: embed a batch of 10 strings, verify shape
+- [x] Benchmark: time to embed 100 chunks of ~200 tokens each
+- [x] Verify: no outbound network calls during embed (network blocked in test)
 
 #### `idep-index` — Pipeline wiring
 - [ ] `EmbedPipeline::run(chunks: Vec<Chunk>) -> Vec<EmbeddedChunk>`
