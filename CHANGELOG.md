@@ -5,10 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — v0.0.7
+## [v0.0.7] — 2026-03-22
+
+### Added
+- **Local embeddings pipeline** with fastembed v5 and AllMiniLML6V2 model
+- `Embedder` struct with automatic model download and caching to `~/.idep/models/`
+- `Embedder::embed_batch()` method with 384-dimension assertion for AllMiniLML6V2
+- `EmbedPipeline` for batch processing with configurable batch size (default 32)
+- `EmbeddedChunk` struct combining CodeChunk with Vec<f32> embedding
+- Progress callbacks for large batch embedding operations via `run_with_progress()`
+- Comprehensive test suite:
+  - Unit test: embed batch of 10 strings, verify 384-dimension shape
+  - Benchmark: time to embed 100 chunks of ~200 tokens each
+  - Network independence test: verifies no outbound network calls after initial download
+  - Pipeline tests: verifies one embedding per chunk, custom batch sizes, progress callbacks
+- Model cache exclusion from git via .gitignore (`.fastembed_cache/`, `*.onnx`, `*.lock`)
+- Internal workspace dependencies for cross-crate integration
+
+### Changed
+- Added `PartialEq` to `ChunkKind` for testing pipeline functionality
+- Workspace version bumped to 0.0.7
+- All 62 tests passing across all crates
+
+---
+
+## [Unreleased] — v0.0.8
 
 ### Planned
-- Local embeddings pipeline (fastembed)
 - Vector index + query (usearch)
 - RAG context injection in chat
 
