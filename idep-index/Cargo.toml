@@ -26,3 +26,4 @@ idep-ai.workspace     = true
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 lazy_static = "1"
+tempfile = "3"

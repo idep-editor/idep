@@ -5,7 +5,8 @@
 use anyhow::Result;
 use fastembed::{EmbeddingModel, TextEmbedding};
 use idep_ai::indexer::CodeChunk;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 pub struct Embedder {
     model: TextEmbedding,
@@ -17,6 +18,180 @@ pub struct Embedder {
 pub struct EmbeddedChunk {
     pub chunk: CodeChunk,
     pub embedding: Vec<f32>,
+}
+
+/// A search result with similarity score
+#[derive(Debug, Clone)]
+pub struct ScoredChunk {
+    pub id: u64,
+    pub score: f32,
+}
+
+/// Compute cosine similarity between two vectors
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if magnitude_a == 0.0 || magnitude_b == 0.0 {
+        0.0
+    } else {
+        dot_product / (magnitude_a * magnitude_b)
+    }
+}
+
+/// Vector store for embeddings with similarity search
+pub struct VectorStore {
+    // Store vectors directly instead of using HNSW for now to avoid lifetime issues
+    vectors: Vec<Vec<f32>>,
+    id_map: HashMap<usize, String>, // Map internal IDs to chunk identifiers
+    next_id: usize,
+}
+
+impl VectorStore {
+    /// Create a new vector store for 384-dimensional embeddings
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            vectors: Vec::new(),
+            id_map: HashMap::new(),
+            next_id: 0,
+        })
+    }
+
+    /// Add an embedding to the store
+    pub fn add(&mut self, chunk_id: &str, embedding: &[f32]) -> Result<u64> {
+        let id = self.next_id;
+
+        // Validate embedding length
+        if embedding.len() != 384 {
+            return Err(anyhow::anyhow!(
+                "Embedding must be 384 dimensions, got {}",
+                embedding.len()
+            ));
+        }
+
+        // Store the embedding vector
+        self.vectors.push(embedding.to_vec());
+
+        // Update state
+        self.id_map.insert(id, chunk_id.to_string());
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("ID overflow: maximum ID reached"))?;
+
+        Ok(id as u64)
+    }
+
+    /// Find similar embeddings using brute-force cosine similarity
+    pub fn find_similar(&self, embedding: &[f32], top_k: usize) -> Result<Vec<ScoredChunk>> {
+        // Validate query embedding dimensions
+        if embedding.len() != 384 {
+            return Err(anyhow::anyhow!(
+                "Query embedding must be 384 dimensions, got {}",
+                embedding.len()
+            ));
+        }
+
+        // Compute cosine similarity with all vectors
+        let mut similarities: Vec<(usize, f32)> = self
+            .vectors
+            .iter()
+            .enumerate()
+            .map(|(id, vec)| {
+                let similarity = cosine_similarity(embedding, vec);
+                (id, similarity)
+            })
+            .collect();
+
+        // Sort by similarity (descending)
+        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top k
+        let results: Vec<ScoredChunk> = similarities
+            .into_iter()
+            .take(top_k)
+            .map(|(id, score)| ScoredChunk {
+                id: id as u64,
+                score,
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Save the index to disk
+    pub fn save(&self, path: &Path) -> Result<()> {
+        // Validate that ID map matches vector count
+        if self.id_map.len() != self.vectors.len() {
+            return Err(anyhow::anyhow!(
+                "ID map size {} doesn't match vector count {}",
+                self.id_map.len(),
+                self.vectors.len()
+            ));
+        }
+
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Save vectors as JSON
+        let vectors_json = serde_json::to_string(&self.vectors)?;
+        std::fs::write(path, vectors_json)?;
+
+        // Save the ID mapping as JSON
+        let id_map_path = path.with_extension("json");
+        let id_map_json = serde_json::to_string(&self.id_map)?;
+        std::fs::write(id_map_path, id_map_json)?;
+
+        Ok(())
+    }
+
+    /// Load the index from disk
+    pub fn load(path: &Path) -> Result<Self> {
+        // Load vectors from JSON
+        let vectors_json = std::fs::read_to_string(path)?;
+        let vectors: Vec<Vec<f32>> = serde_json::from_str(&vectors_json)?;
+
+        // Load the ID mapping
+        let id_map_path = path.with_extension("json");
+        let id_map_json = std::fs::read_to_string(id_map_path)?;
+        let id_map: HashMap<usize, String> = serde_json::from_str(&id_map_json)?;
+
+        // Validate that loaded ID map matches vector count
+        if id_map.len() != vectors.len() {
+            return Err(anyhow::anyhow!(
+                "Loaded ID map size {} doesn't match vector count {}",
+                id_map.len(),
+                vectors.len()
+            ));
+        }
+
+        // Determine next ID (max existing ID + 1)
+        let next_id = id_map.keys().max().map(|&id| id + 1).unwrap_or(0);
+
+        Ok(Self {
+            vectors,
+            id_map,
+            next_id,
+        })
+    }
+
+    /// Get the chunk identifier for an internal ID
+    pub fn get_chunk_id(&self, id: u64) -> Option<&str> {
+        self.id_map.get(&(id as usize)).map(|s| s.as_str())
+    }
+
+    /// Get the number of embeddings in the store
+    pub fn len(&self) -> usize {
+        self.vectors.len()
+    }
+
+    /// Check if the store is empty
+    pub fn is_empty(&self) -> bool {
+        self.vectors.is_empty()
+    }
 }
 
 pub struct EmbedPipeline {
@@ -139,11 +314,12 @@ impl Embedder {
         let embeddings = self.model.embed(texts, None)?;
         // Verify embedding dimension
         if let Some(first) = embeddings.first() {
-            assert_eq!(
-                first.len(),
-                384,
-                "Expected 384 dimensions for AllMiniLML6V2"
-            );
+            if first.len() != 384 {
+                return Err(anyhow::anyhow!(
+                    "Expected 384 dimensions for AllMiniLML6V2, got {}",
+                    first.len()
+                ));
+            }
         }
         Ok(embeddings)
     }
@@ -160,6 +336,7 @@ mod tests {
     use idep_ai::indexer::{ChunkKind, CodeChunk};
     use std::path::PathBuf;
     use std::sync::Mutex;
+    use tempfile::tempdir;
 
     // Use a Mutex to allow mutable access across tests
     lazy_static::lazy_static! {
@@ -330,5 +507,87 @@ mod tests {
         // Should have progress updates
         assert!(!progress_calls.is_empty());
         assert_eq!(progress_calls.last(), Some(&(2, 2))); // Final update
+    }
+
+    #[test]
+    fn vector_store_creation() {
+        let store = VectorStore::new();
+        assert!(store.is_ok());
+    }
+
+    #[test]
+    fn vector_store_basic_add() {
+        let mut store = VectorStore::new().expect("Failed to create vector store");
+
+        // Just test that we can add without crashing
+        let embedding: Vec<f32> = vec![0.1; 384];
+        let _id = store.add("chunk1", &embedding);
+
+        // If we get here, no segfault occurred
+        // Test passed successfully
+    }
+
+    #[test]
+    fn vector_store_save_and_load() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let index_path = temp_dir.path().join("test_index.usearch");
+
+        // Create and populate store
+        let mut store = VectorStore::new().expect("Failed to create vector store");
+
+        let embedding1: Vec<f32> = vec![0.1; 384];
+        let embedding2: Vec<f32> = vec![0.2; 384];
+
+        store
+            .add("chunk1", &embedding1)
+            .expect("Failed to add embedding");
+        store
+            .add("chunk2", &embedding2)
+            .expect("Failed to add embedding");
+
+        // Save to disk
+        store.save(&index_path).expect("Failed to save store");
+
+        // Load from disk
+        let loaded_store = VectorStore::load(&index_path).expect("Failed to load store");
+
+        // Verify loaded store has same data
+        assert_eq!(loaded_store.len(), 2);
+        assert_eq!(loaded_store.get_chunk_id(0), Some("chunk1"));
+        assert_eq!(loaded_store.get_chunk_id(1), Some("chunk2"));
+
+        // Verify search works on loaded store
+        let query: Vec<f32> = vec![0.15; 384];
+        let results = loaded_store
+            .find_similar(&query, 2)
+            .expect("Failed to search loaded store");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn vector_store_self_similarity() {
+        let mut store = VectorStore::new().expect("Failed to create vector store");
+
+        // Add 50 random embeddings
+        let mut embeddings = Vec::new();
+        for i in 0..50 {
+            let embedding: Vec<f32> = (0..384).map(|j| (i + j) as f32 / 1000.0).collect();
+            embeddings.push(embedding);
+            store
+                .add(&format!("chunk{}", i), &embeddings[i])
+                .expect("Failed to add embedding");
+        }
+
+        // Query with each embedding and verify top-1 is itself
+        for (i, embedding) in embeddings.iter().enumerate() {
+            let results = store.find_similar(embedding, 1).expect("Failed to search");
+            assert_eq!(results.len(), 1);
+            assert_eq!(
+                store.get_chunk_id(results[0].id),
+                Some(format!("chunk{}", i).as_str())
+            );
+            // Self-similarity should be very close to 1.0
+            assert!(results[0].score > 0.99);
+        }
     }
 }

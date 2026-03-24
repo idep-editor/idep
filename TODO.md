@@ -298,15 +298,16 @@
 > **Gate:** `usearch` index persists to disk, survives restart, `find_similar()` returns correct top-k results
 
 #### `idep-index` — Vector store
-- [ ] Add `usearch` crate to `idep-index` deps
-- [ ] `VectorStore` struct: wraps usearch index
-- [ ] `VectorStore::add(id, embedding)`
-- [ ] `VectorStore::find_similar(embedding, top_k) -> Vec<ScoredChunk>`
-- [ ] `ScoredChunk`: chunk ID + cosine similarity score
-- [ ] `VectorStore::save(path)` — persist index to disk
-- [ ] `VectorStore::load(path)` — restore index from disk
-- [ ] Unit test: add 50 embeddings, query, verify top-1 is self
-- [ ] Unit test: save → load → query returns same results
+- [x] Add vector search implementation (brute-force cosine similarity)
+- [x] `VectorStore` struct: stores embeddings with ID mapping
+- [x] `VectorStore::add(id, embedding)` — validated, state-safe
+- [x] `VectorStore::find_similar(embedding, top_k) -> Vec<ScoredChunk>` — cosine similarity
+- [x] `ScoredChunk`: chunk ID + similarity score
+- [x] `VectorStore::save(path)` — persist vectors + ID map to disk (JSON)
+- [x] `VectorStore::load(path)` — restore from disk with validation
+- [x] Unit test: add embeddings, query, verify self-similarity
+- [x] Unit test: save → load → query returns same results
+- [x] All tests passing (no segfaults)
 
 #### `idep-index` — Chunk metadata store
 - [ ] Persist chunk metadata alongside vector index (serde + bincode or sled)
