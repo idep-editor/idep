@@ -19,6 +19,7 @@ tracing.workspace     = true
 serde.workspace       = true
 serde_json.workspace  = true
 walkdir               = "2"
+ignore                = "0.4"
 dirs.workspace        = true
 fastembed.workspace  = true
 idep-ai.workspace     = true

@@ -317,17 +317,17 @@
 - [x] Unit test: round-trip chunk metadata through store
 
 #### `idep-index` — Project indexer
-- [ ] `Indexer::index_project(root: &Path)`
-  - [ ] Walk directory tree (respect `.gitignore` via `ignore` crate)
-  - [ ] Detect language per file extension
-  - [ ] Chunk each file via `AstChunker`
-  - [ ] Embed chunks via `EmbedPipeline`
-  - [ ] Store in `VectorStore` + `ChunkStore`
-- [ ] `Indexer::reindex_file(path: &Path)` — diff-based, not full re-walk
-  - [ ] Remove old chunks for this file
-  - [ ] Re-chunk, re-embed, re-insert
-- [ ] Index stored at `~/.idep/index/<project-hash>/`
-- [ ] Unit test: index a small test project, verify chunk count
+- [x] `Indexer::index_project(root: &Path)`
+  - [x] Walk directory tree (respect `.gitignore` via `ignore` crate)
+  - [x] Detect language per file extension
+  - [x] Chunk each file via naive chunking (AST chunking not public)
+  - [x] Embed chunks via `EmbedPipeline`
+  - [x] Store in `VectorStore` + `ChunkStore`
+- [x] `Indexer::reindex_file(path: &Path)` — diff-based, not full re-walk
+  - [x] Remove old chunks for this file
+  - [x] Re-chunk, re-embed, re-insert
+- [x] Index stored at `~/.idep/index/<project-hash>/`
+- [x] Unit test: index a small test project, verify chunk count
 - [ ] Benchmark: index 50k LOC Rust project, measure total time
 
 ---
