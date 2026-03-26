@@ -44,8 +44,8 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 pub struct VectorStore {
     // Store vectors directly instead of using HNSW for now to avoid lifetime issues
     vectors: Vec<Vec<f32>>,
-    id_map: HashMap<usize, String>, // Map internal IDs to chunk identifiers
-    next_id: usize,
+    id_map: HashMap<u64, String>, // Map internal IDs to chunk identifiers
+    next_id: u64,
 }
 
 impl VectorStore {
@@ -80,7 +80,7 @@ impl VectorStore {
             .checked_add(1)
             .ok_or_else(|| anyhow::anyhow!("ID overflow: maximum ID reached"))?;
 
-        Ok(id as u64)
+        Ok(id)
     }
 
     /// Find similar embeddings using brute-force cosine similarity
@@ -104,8 +104,19 @@ impl VectorStore {
             })
             .collect();
 
-        // Sort by similarity (descending)
-        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort by similarity (descending), handle NaN values by pushing them to end
+        similarities.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or_else(|| {
+                // Handle NaN: push NaN values to end of results
+                if b.1.is_nan() {
+                    std::cmp::Ordering::Less
+                } else if a.1.is_nan() {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
+        });
 
         // Take top k
         let results: Vec<ScoredChunk> = similarities
@@ -140,8 +151,8 @@ impl VectorStore {
         let vectors_json = serde_json::to_string(&self.vectors)?;
         std::fs::write(path, vectors_json)?;
 
-        // Save the ID mapping as JSON
-        let id_map_path = path.with_extension("json");
+        // Save the ID mapping as JSON with distinct extension
+        let id_map_path = path.with_extension("id_map.json");
         let id_map_json = serde_json::to_string(&self.id_map)?;
         std::fs::write(id_map_path, id_map_json)?;
 
@@ -154,10 +165,10 @@ impl VectorStore {
         let vectors_json = std::fs::read_to_string(path)?;
         let vectors: Vec<Vec<f32>> = serde_json::from_str(&vectors_json)?;
 
-        // Load the ID mapping
-        let id_map_path = path.with_extension("json");
+        // Load the ID mapping with matching extension
+        let id_map_path = path.with_extension("id_map.json");
         let id_map_json = std::fs::read_to_string(id_map_path)?;
-        let id_map: HashMap<usize, String> = serde_json::from_str(&id_map_json)?;
+        let id_map: HashMap<u64, String> = serde_json::from_str(&id_map_json)?;
 
         // Validate that loaded ID map matches vector count
         if id_map.len() != vectors.len() {
@@ -180,7 +191,7 @@ impl VectorStore {
 
     /// Get the chunk identifier for an internal ID
     pub fn get_chunk_id(&self, id: u64) -> Option<&str> {
-        self.id_map.get(&(id as usize)).map(|s| s.as_str())
+        self.id_map.get(&id).map(|s| s.as_str())
     }
 
     /// Get the number of embeddings in the store
@@ -265,6 +276,16 @@ impl ChunkStore {
         let next_id_path = path.with_extension("next");
         let next_id_json = std::fs::read_to_string(next_id_path)?;
         let next_id: u64 = serde_json::from_str(&next_id_json)?;
+
+        // Validate that next_id is consistent with loaded chunks
+        let max_id = chunks.keys().max().copied().unwrap_or(0);
+        if next_id <= max_id {
+            return Err(anyhow::anyhow!(
+                "Invalid next_id {} for max chunk id {} - potential data corruption",
+                next_id,
+                max_id
+            ));
+        }
 
         Ok(Self { chunks, next_id })
     }
