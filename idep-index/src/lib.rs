@@ -194,6 +194,97 @@ impl VectorStore {
     }
 }
 
+/// Chunk metadata store for persisting CodeChunk data alongside vectors
+pub struct ChunkStore {
+    chunks: HashMap<u64, CodeChunk>,
+    next_id: u64,
+}
+
+impl Default for ChunkStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChunkStore {
+    /// Create a new chunk store
+    pub fn new() -> Self {
+        Self {
+            chunks: HashMap::new(),
+            next_id: 0,
+        }
+    }
+
+    /// Insert a chunk and return its ID
+    pub fn insert(&mut self, chunk: CodeChunk) -> Result<u64> {
+        let id = self.next_id;
+        self.chunks.insert(id, chunk);
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("ID overflow: maximum ID reached"))?;
+        Ok(id)
+    }
+
+    /// Get a chunk by ID
+    pub fn get(&self, id: u64) -> Option<&CodeChunk> {
+        self.chunks.get(&id)
+    }
+
+    /// Delete a chunk by ID
+    pub fn delete(&mut self, id: u64) -> Option<CodeChunk> {
+        self.chunks.remove(&id)
+    }
+
+    /// Save the chunk store to disk
+    pub fn save(&self, path: &Path) -> Result<()> {
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Serialize chunks using JSON
+        let chunks_json = serde_json::to_string(&self.chunks)?;
+        std::fs::write(path, chunks_json)?;
+
+        // Store next_id in a separate file
+        let next_id_path = path.with_extension("next");
+        let next_id_json = serde_json::to_string(&self.next_id)?;
+        std::fs::write(next_id_path, next_id_json)?;
+
+        Ok(())
+    }
+
+    /// Load the chunk store from disk
+    pub fn load(path: &Path) -> Result<Self> {
+        // Load chunks from JSON
+        let chunks_json = std::fs::read_to_string(path)?;
+        let chunks: HashMap<u64, CodeChunk> = serde_json::from_str(&chunks_json)?;
+
+        // Load next_id from separate file
+        let next_id_path = path.with_extension("next");
+        let next_id_json = std::fs::read_to_string(next_id_path)?;
+        let next_id: u64 = serde_json::from_str(&next_id_json)?;
+
+        Ok(Self { chunks, next_id })
+    }
+
+    /// Get the number of chunks in the store
+    pub fn len(&self) -> usize {
+        self.chunks.len()
+    }
+
+    /// Check if the store is empty
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
+    /// Get all chunk IDs
+    pub fn ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.chunks.keys().copied()
+    }
+}
+
 pub struct EmbedPipeline {
     embedder: Embedder,
     batch_size: usize,
@@ -589,5 +680,83 @@ mod tests {
             // Self-similarity should be very close to 1.0
             assert!(results[0].score > 0.99);
         }
+    }
+
+    #[test]
+    fn chunk_store_round_trip() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let store_path = temp_dir.path().join("test_chunks.json");
+
+        // Create test chunks
+        let chunk1 = CodeChunk {
+            file: PathBuf::from("src/main.rs"),
+            content: "fn main() { println!(\"Hello, world!\"); }".to_string(),
+            start_line: 1,
+            end_line: 1,
+            kind: ChunkKind::Function,
+            name: Some("main".to_string()),
+        };
+
+        let chunk2 = CodeChunk {
+            file: PathBuf::from("src/utils.rs"),
+            content: "pub fn add(a: i32, b: i32) -> i32 { a + b }".to_string(),
+            start_line: 1,
+            end_line: 1,
+            kind: ChunkKind::Function,
+            name: Some("add".to_string()),
+        };
+
+        // Test insert and get
+        let mut store = ChunkStore::new();
+        let id1 = store
+            .insert(chunk1.clone())
+            .expect("Failed to insert chunk1");
+        let id2 = store
+            .insert(chunk2.clone())
+            .expect("Failed to insert chunk2");
+
+        assert_eq!(id1, 0);
+        assert_eq!(id2, 1);
+        assert_eq!(store.len(), 2);
+
+        // Test get
+        let retrieved1 = store.get(id1).expect("Failed to get chunk1");
+        let retrieved2 = store.get(id2).expect("Failed to get chunk2");
+
+        assert_eq!(retrieved1.file, chunk1.file);
+        assert_eq!(retrieved1.content, chunk1.content);
+        assert_eq!(retrieved1.start_line, chunk1.start_line);
+        assert_eq!(retrieved1.end_line, chunk1.end_line);
+        assert_eq!(retrieved1.kind, chunk1.kind);
+        assert_eq!(retrieved1.name, chunk1.name);
+
+        assert_eq!(retrieved2.file, chunk2.file);
+        assert_eq!(retrieved2.content, chunk2.content);
+        assert_eq!(retrieved2.start_line, chunk2.start_line);
+        assert_eq!(retrieved2.end_line, chunk2.end_line);
+        assert_eq!(retrieved2.kind, chunk2.kind);
+        assert_eq!(retrieved2.name, chunk2.name);
+
+        // Test delete
+        let deleted = store.delete(id1).expect("Failed to delete chunk1");
+        assert_eq!(deleted.file, chunk1.file);
+        assert_eq!(store.len(), 1);
+        assert!(store.get(id1).is_none());
+        assert!(store.get(id2).is_some());
+
+        // Test save and load
+        store.save(&store_path).expect("Failed to save store");
+        let loaded_store = ChunkStore::load(&store_path).expect("Failed to load store");
+
+        assert_eq!(loaded_store.len(), 1);
+        let loaded_chunk = loaded_store
+            .get(id2)
+            .expect("Failed to get chunk from loaded store");
+        assert_eq!(loaded_chunk.file, chunk2.file);
+        assert_eq!(loaded_chunk.content, chunk2.content);
+
+        // Test IDs iterator
+        let ids: Vec<u64> = loaded_store.ids().collect();
+        assert_eq!(ids, vec![id2]);
     }
 }

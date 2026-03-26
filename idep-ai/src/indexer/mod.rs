@@ -8,13 +8,14 @@
 //   5. Query: given cursor context, retrieve top-K relevant chunks
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 mod ast;
 use ast::{AstChunker, Chunk};
 
 /// A chunk of source code with its provenance
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CodeChunk {
     pub file: PathBuf,
     pub content: String,
@@ -24,7 +25,7 @@ pub struct CodeChunk {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChunkKind {
     Function,
     Struct,

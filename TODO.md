@@ -310,11 +310,11 @@
 - [x] All tests passing (no segfaults)
 
 #### `idep-index` — Chunk metadata store
-- [ ] Persist chunk metadata alongside vector index (serde + bincode or sled)
-- [ ] `ChunkStore::get(id) -> Option<Chunk>`
-- [ ] `ChunkStore::insert(chunk) -> id`
-- [ ] `ChunkStore::delete(id)`
-- [ ] Unit test: round-trip chunk metadata through store
+- [x] Persist chunk metadata alongside vector index (serde + JSON)
+- [x] `ChunkStore::get(id) -> Option<Chunk>`
+- [x] `ChunkStore::insert(chunk) -> id`
+- [x] `ChunkStore::delete(id)`
+- [x] Unit test: round-trip chunk metadata through store
 
 #### `idep-index` — Project indexer
 - [ ] `Indexer::index_project(root: &Path)`
