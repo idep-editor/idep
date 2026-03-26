@@ -194,6 +194,32 @@ impl VectorStore {
         self.id_map.get(&id).map(|s| s.as_str())
     }
 
+    /// Remove an embedding from the store (rebuilds the entire store)
+    /// Note: This is expensive but necessary for consistency
+    pub fn delete(&mut self, id: u64) -> Result<()> {
+        if self.id_map.remove(&id).is_some() {
+            // Rebuild the vectors array by filtering out the deleted embedding
+            let vector_index = id as usize;
+            if vector_index < self.vectors.len() {
+                self.vectors.remove(vector_index);
+
+                // Rebuild the ID map with updated indices
+                let mut new_id_map = HashMap::new();
+                for (old_id, chunk_id) in self.id_map.drain() {
+                    let new_id = if old_id > id { old_id - 1 } else { old_id };
+                    new_id_map.insert(new_id, chunk_id);
+                }
+                self.id_map = new_id_map;
+
+                // Update next_id if necessary
+                if self.next_id > id {
+                    self.next_id -= 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Get the number of embeddings in the store
     pub fn len(&self) -> usize {
         self.vectors.len()
@@ -811,9 +837,21 @@ impl ProjectIndexer {
 
     /// Get the index directory for a project
     fn get_index_dir(root: &Path) -> Result<PathBuf> {
+        // Validate and canonicalize the root path
+        let canonical_root = root.canonicalize().map_err(|e| {
+            anyhow::anyhow!("Cannot canonicalize root path {}: {}", root.display(), e)
+        })?;
+
+        if !canonical_root.is_dir() {
+            return Err(anyhow::anyhow!(
+                "Root path is not a directory: {}",
+                canonical_root.display()
+            ));
+        }
+
         let home =
             dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-        let project_hash = Self::project_hash(root)?;
+        let project_hash = Self::project_hash(&canonical_root)?;
         Ok(home.join(".idep").join("index").join(project_hash))
     }
 
@@ -848,15 +886,29 @@ impl ProjectIndexer {
             let path = entry.path();
 
             if path.is_file() && self.is_source_file(path) {
-                if let Ok(chunks) = self.chunk_file(path) {
-                    total_chunks += chunks.len();
+                match self.chunk_file(path) {
+                    Ok(chunks) => {
+                        total_chunks += chunks.len();
 
-                    // Embed chunks and store them
-                    let embedded_chunks = self.embed_pipeline.run(chunks)?;
-                    for embedded_chunk in embedded_chunks {
-                        let chunk_id = self.chunk_store.insert(embedded_chunk.chunk.clone())?;
-                        self.vector_store
-                            .add(&chunk_id.to_string(), &embedded_chunk.embedding)?;
+                        // Embed chunks and store them
+                        match self.embed_pipeline.run(chunks) {
+                            Ok(embedded_chunks) => {
+                                for embedded_chunk in embedded_chunks {
+                                    let chunk_id =
+                                        self.chunk_store.insert(embedded_chunk.chunk.clone())?;
+                                    self.vector_store
+                                        .add(&chunk_id.to_string(), &embedded_chunk.embedding)?;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to embed {}: {}", path.display(), e);
+                                // Continue with other files
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to chunk {}: {}", path.display(), e);
+                        // Continue with other files
                     }
                 }
             }
@@ -875,13 +927,22 @@ impl ProjectIndexer {
 
     /// Re-index a single file (diff-based)
     pub fn reindex_file(&mut self, path: &Path) -> Result<usize> {
+        // Normalize the path for comparison
+        let normalized_path = path
+            .canonicalize()
+            .map_err(|e| anyhow::anyhow!("Cannot canonicalize path {}: {}", path.display(), e))?;
+
         // Remove old chunks for this file
         let chunks_to_remove: Vec<u64> = self
             .chunk_store
             .ids()
             .filter(|&id| {
                 if let Some(chunk) = self.chunk_store.get(id) {
-                    chunk.file == path
+                    // Compare normalized paths
+                    chunk
+                        .file
+                        .canonicalize()
+                        .is_ok_and(|chunk_path| chunk_path == normalized_path)
                 } else {
                     false
                 }
@@ -891,8 +952,8 @@ impl ProjectIndexer {
         let removed_count = chunks_to_remove.len();
         for chunk_id in &chunks_to_remove {
             self.chunk_store.delete(*chunk_id);
-            // Note: VectorStore doesn't have delete, so we'd need to rebuild it
-            // For now, we'll mark this as TODO
+            // Delete the corresponding embedding from VectorStore
+            self.vector_store.delete(*chunk_id)?;
         }
 
         // Re-chunk, re-embed, re-insert
@@ -930,9 +991,31 @@ impl ProjectIndexer {
         let vector_store_path = self.index_dir.join("vectors.json");
         let chunk_store_path = self.index_dir.join("chunks.json");
 
-        if vector_store_path.exists() && chunk_store_path.exists() {
+        // Validate that both files exist
+        let vectors_exist = vector_store_path.exists();
+        let chunks_exist = chunk_store_path.exists();
+
+        if vectors_exist != chunks_exist {
+            return Err(anyhow::anyhow!(
+                "Index files are inconsistent: vectors={}, chunks={}",
+                vectors_exist,
+                chunks_exist
+            ));
+        }
+
+        if vectors_exist && chunks_exist {
             self.vector_store = VectorStore::load(&vector_store_path)?;
             self.chunk_store = ChunkStore::load(&chunk_store_path)?;
+
+            // Validate consistency between stores
+            if self.vector_store.len() != self.chunk_store.len() {
+                return Err(anyhow::anyhow!(
+                    "Index inconsistency: {} vectors but {} chunks",
+                    self.vector_store.len(),
+                    self.chunk_store.len()
+                ));
+            }
+
             tracing::info!("Loaded index from {}", self.index_dir.display());
         }
 
@@ -967,6 +1050,14 @@ impl ProjectIndexer {
             let mut end_line = i;
 
             for (line_idx, line) in lines[i..].iter().enumerate() {
+                // Check if this single line is too long
+                if line.len() > chunk_size && line_idx == 0 {
+                    // Split long lines or create a chunk with just this line
+                    chunk_content.push_str(&line[..chunk_size.min(line.len())]);
+                    end_line = i + 1;
+                    break;
+                }
+
                 if char_count + line.len() + 1 > chunk_size && line_idx > 0 {
                     break;
                 }
@@ -988,7 +1079,9 @@ impl ProjectIndexer {
             if end_line >= lines.len() {
                 break;
             }
-            i += (end_line - i) - overlap;
+            // Ensure forward progress by calculating overlap correctly
+            let lines_added = end_line - i;
+            i += lines_added.saturating_sub(overlap).max(1);
         }
 
         chunks
