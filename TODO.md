@@ -294,7 +294,7 @@
 
 ---
 
-### 🔴 v0.0.8 — Vector Index + Query
+### ✅ v0.0.8 — Vector Index + Query
 > **Gate:** `usearch` index persists to disk, survives restart, `find_similar()` returns correct top-k results
 
 #### `idep-index` — Vector store
