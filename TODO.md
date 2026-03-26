@@ -328,7 +328,7 @@
   - [x] Re-chunk, re-embed, re-insert
 - [x] Index stored at `~/.idep/index/<project-hash>/`
 - [x] Unit test: index a small test project, verify chunk count
-- [ ] Benchmark: index 50k LOC Rust project, measure total time
+- [x] Benchmark: index 50k LOC Rust project, measure total time
 
 ---
 

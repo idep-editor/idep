@@ -333,7 +333,7 @@ impl ChunkStore {
 }
 
 pub struct EmbedPipeline {
-    embedder: Embedder,
+    pub embedder: Embedder,
     batch_size: usize,
 }
 
@@ -1251,6 +1251,114 @@ mod project_indexer_tests {
 
         // Verify the file was re-indexed (chunk count may change)
         assert!(!indexer.is_empty());
+    }
+
+    #[test]
+    fn project_indexer_benchmark_performance() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let project_path = temp_dir.path().join("benchmark_project");
+        fs::create_dir(&project_path).expect("Failed to create project dir");
+
+        // Create a smaller synthetic project for quick benchmarking
+        let files_to_create = 20; // ~100 lines per file = ~2k LOC total
+        let lines_per_file = 100;
+        let mut total_lines = 0;
+
+        for i in 0..files_to_create {
+            let file_path = project_path.join(format!("src/file_{}.rs", i));
+            fs::create_dir_all(file_path.parent().unwrap()).expect("Failed to create src dir");
+
+            let mut file = fs::File::create(&file_path).expect("Failed to create file");
+            writeln!(file, "//! Module file_{}", i).expect("Failed to write header");
+
+            // Generate synthetic Rust code
+            for j in 0..lines_per_file {
+                writeln!(file, "/// Function {}_{} documentation", i, j)
+                    .expect("Failed to write doc");
+                writeln!(file, "pub fn function_{}_{}() -> u64 {{", i, j)
+                    .expect("Failed to write fn");
+                writeln!(file, "    let x = {}u64;", j * 7).expect("Failed to write let");
+                writeln!(file, "    x * 2 + {}", j).expect("Failed to write calc");
+                writeln!(file, "}}").expect("Failed to write close");
+                writeln!(file).expect("Failed to write blank line");
+            }
+
+            total_lines += lines_per_file + 2;
+        }
+
+        // Create main.rs
+        let main_path = project_path.join("src/main.rs");
+        let mut main_file = fs::File::create(&main_path).expect("Failed to create main.rs");
+        writeln!(
+            main_file,
+            "fn main() {{ println!(\"Benchmark: {} LOC\"); }}",
+            total_lines
+        )
+        .expect("Failed to write main");
+        total_lines += 1;
+
+        println!(
+            "Created benchmark project: {} LOC across {} files",
+            total_lines,
+            files_to_create + 1
+        );
+
+        // Benchmark indexing
+        let start_time = std::time::Instant::now();
+
+        let mut indexer = ProjectIndexer::new(&project_path).expect("Failed to create indexer");
+        let chunk_count = indexer.index_project().expect("Failed to index project");
+
+        let indexing_duration = start_time.elapsed();
+
+        // Quick search benchmark
+        let search_start = std::time::Instant::now();
+        let test_query = "function documentation";
+        let query_embedding = {
+            let mut temp_embedder = Embedder::new().expect("Failed to create embedder");
+            temp_embedder
+                .embed_batch(&[test_query])
+                .expect("Failed to embed query")
+                .remove(0)
+        };
+        let search_results = indexer
+            .vector_store
+            .find_similar(&query_embedding, 5)
+            .expect("Failed to search");
+        let search_duration = search_start.elapsed();
+
+        // Results
+        println!("=== Benchmark Results ===");
+        println!(
+            "Project: {} LOC, {} files",
+            total_lines,
+            files_to_create + 1
+        );
+        println!("Chunks: {}", chunk_count);
+        println!("Indexing: {:?}", indexing_duration);
+        println!("Search: {:?}", search_duration);
+        println!(
+            "Rate: {:.1} LOC/sec",
+            total_lines as f64 / indexing_duration.as_secs_f64()
+        );
+
+        // Basic assertions
+        assert!(total_lines >= 2000, "Should have at least 2k LOC");
+        assert!(chunk_count > 0, "Should generate chunks");
+        assert!(!indexer.is_empty(), "Index should not be empty");
+        assert!(
+            indexing_duration.as_secs() < 120,
+            "Should complete within 2 minutes"
+        );
+        assert!(!search_results.is_empty(), "Search should return results");
+
+        // Extrapolate to 50k LOC estimate
+        let estimated_50k_time = std::time::Duration::from_secs_f64(
+            (50000.0 / total_lines as f64) * indexing_duration.as_secs_f64(),
+        );
+        println!("Estimated 50k LOC indexing time: {:?}", estimated_50k_time);
+
+        println!("✅ Benchmark completed successfully!");
     }
 
     #[test]
