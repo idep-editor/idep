@@ -9,10 +9,12 @@
 pub mod backends;
 pub mod chat;
 pub mod completion;
+pub mod context;
 pub mod indexer;
 
 /// Re-export the top-level types callers need
 pub use backends::{Backend, BackendConfig};
 pub use chat::{ChatMessage, ChatSession};
 pub use completion::{CompletionRequest, CompletionResponse};
+pub use context::{Context, ContextConfig, ContextEngine, Position};
 pub use indexer::Indexer;

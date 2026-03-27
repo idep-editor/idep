@@ -336,22 +336,22 @@
 > **Gate:** Chat responses demonstrably reference correct codebase chunks; verified by test
 
 #### `idep-ai` — Context engine
-- [ ] `ContextEngine` struct: takes query, workspace root, returns `Vec<Chunk>`
-- [ ] `ContextEngine::gather(query: &str, cursor_file: &Path, cursor_pos: Position) -> Context`
-  - [ ] Current file content (always included)
-  - [ ] AST subtree around cursor (Tree-sitter)
-  - [ ] Top-k similar chunks from vector index
-  - [ ] Recent edit history (last N saves)
-- [ ] Context serializer: format chunks into prompt-friendly text block
-- [ ] Token budget manager: fit context within model's context window
-  - [ ] Configurable max context tokens (default 4096)
-  - [ ] Priority order: cursor context > similar chunks > history
-  - [ ] Truncate lower-priority sections first
+- [x] `ContextEngine` struct: takes query, workspace root, returns `Vec<Chunk>`
+- [x] `ContextEngine::gather(query: &str, cursor_file: &Path, cursor_pos: Position) -> Context`
+  - [x] Current file content (always included)
+  - [x] AST subtree around cursor (Tree-sitter)
+  - [x] Top-k similar chunks from vector index
+  - [x] Recent edit history (last N saves)
+- [x] Context serializer: format chunks into prompt-friendly text block
+- [x] Token budget manager: fit context within model's context window
+  - [x] Configurable max context tokens (default 4096)
+  - [x] Priority order: cursor context > similar chunks > history
+  - [x] Truncate lower-priority sections first
 
 #### `idep-ai` — Chat with RAG
-- [ ] `ChatSession::send_with_context(query, context)` — prepend context block to message
-- [ ] `ChatSession::export()` — serialize history to JSON
-- [ ] Unit test: context block injected correctly into prompt
+- [x] `ChatSession::send_with_context(query, context)` — prepend context block to message
+- [x] `ChatSession::export()` — serialize history to JSON
+- [x] Unit test: context block injected correctly into prompt
 - [ ] Integration test: ask question about a specific function → response references it
 
 #### `idep-ai` — Anthropic native message format
