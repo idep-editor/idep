@@ -287,3 +287,6 @@ mod tests {
         assert!(exported.contains("Hi there!"));
     }
 }
+
+#[cfg(test)]
+mod integration_test;

@@ -352,7 +352,7 @@
 - [x] `ChatSession::send_with_context(query, context)` — prepend context block to message
 - [x] `ChatSession::export()` — serialize history to JSON
 - [x] Unit test: context block injected correctly into prompt
-- [ ] Integration test: ask question about a specific function → response references it
+- [x] Integration test: ask question about a specific function → response references it
 
 #### `idep-ai` — Anthropic native message format
 - [ ] Replace `build_prompt()` with native `messages` array for Anthropic

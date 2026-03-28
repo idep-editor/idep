@@ -212,11 +212,13 @@ impl ContextEngine {
             output.push_str(&format!("Language: {}\n", current_file.language));
             output.push_str("Content around cursor:\n");
             for (i, line) in current_file.nearby_lines.iter().enumerate() {
-                output.push_str(&format!(
-                    "{}: {}\n",
-                    current_file.cursor_position.line + i - current_file.nearby_lines.len() / 2,
-                    line
-                ));
+                let line_num = current_file
+                    .cursor_position
+                    .line
+                    .saturating_sub(current_file.nearby_lines.len() / 2)
+                    + i
+                    + 1;
+                output.push_str(&format!("{}: {}\n", line_num, line));
             }
             output.push('\n');
         }
