@@ -163,8 +163,6 @@ impl ChatSession {
         // Build prompt with context
         let prompt_with_context = self.build_prompt_with_context(message, context);
 
-        self.history.push(ChatMessage::user(message));
-
         // Cancel any pending request from the previous call
         {
             let mut token_guard = self.cancel_token.lock().await;
@@ -190,20 +188,25 @@ impl ChatSession {
             }
         }
 
+        // Add user message to history only after debounce passes
+        self.history.push(ChatMessage::user(message));
+
         // Try Ollama streaming first
-        if let Some(ollama) = self.backend.as_any().downcast_ref::<OllamaBackend>() {
+        let result = if let Some(ollama) = self.backend.as_any().downcast_ref::<OllamaBackend>() {
             let result = ollama
                 .stream_completion(&prompt_with_context, 2048, |tok| on_token(tok))
                 .await?;
-            self.history.push(ChatMessage::assistant(&result));
-            Ok(result)
+            result
         } else {
             // Fallback: non-streaming backends, emit once at end
             let response = self.backend.complete(&prompt_with_context, 2048).await?;
             on_token(&response);
-            self.history.push(ChatMessage::assistant(&response));
-            Ok(response)
-        }
+            response
+        };
+
+        // Add assistant response to history
+        self.history.push(ChatMessage::assistant(&result));
+        Ok(result)
     }
 
     /// Export conversation history to JSON

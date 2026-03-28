@@ -167,6 +167,11 @@ impl ContextEngine {
         Self { config }
     }
 
+    /// Get the current configuration
+    pub fn config(&self) -> &ContextConfig {
+        &self.config
+    }
+
     /// Gather context for a query and cursor position
     pub fn gather(
         &self,
@@ -175,30 +180,17 @@ impl ContextEngine {
         _cursor_file: &Path,
         _cursor_pos: Position,
     ) -> Result<Context> {
-        // This is a skeleton implementation
-        // In a real implementation, this would:
-        // 1. Load current file content
-        // 2. Parse AST around cursor
+        // TODO: Implement context gathering
+        // This method should:
+        // 1. Load current file content around cursor
+        // 2. Parse AST around cursor using Tree-sitter
         // 3. Query vector index for similar chunks
         // 4. Load recent edit history
         // 5. Apply token budget management
 
-        let context = Context {
-            current_file: None,         // TODO: Implement
-            ast_context: None,          // TODO: Implement
-            similar_chunks: Vec::new(), // TODO: Implement
-            edit_history: Vec::new(),   // TODO: Implement
-            token_usage: TokenUsage {
-                total_tokens: 0,
-                max_tokens: self.config.max_tokens,
-                current_file_tokens: 0,
-                ast_context_tokens: 0,
-                similar_chunks_tokens: 0,
-                edit_history_tokens: 0,
-            },
-        };
-
-        Ok(context)
+        Err(anyhow::anyhow!(
+            "ContextEngine::gather() is not yet implemented"
+        ))
     }
 
     /// Serialize context into a prompt-friendly text block
@@ -212,12 +204,9 @@ impl ContextEngine {
             output.push_str(&format!("Language: {}\n", current_file.language));
             output.push_str("Content around cursor:\n");
             for (i, line) in current_file.nearby_lines.iter().enumerate() {
-                let line_num = current_file
-                    .cursor_position
-                    .line
-                    .saturating_sub(current_file.nearby_lines.len() / 2)
-                    + i
-                    + 1;
+                // Calculate line number: cursor_line (0-indexed) - offset + i + 1 (for 1-indexed display)
+                let offset = current_file.nearby_lines.len() / 2;
+                let line_num = current_file.cursor_position.line.saturating_sub(offset) + i + 1;
                 output.push_str(&format!("{}: {}\n", line_num, line));
             }
             output.push('\n');
