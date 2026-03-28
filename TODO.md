@@ -355,9 +355,9 @@
 - [x] Integration test: ask question about a specific function → response references it
 
 #### `idep-ai` — Anthropic native message format
-- [ ] Replace `build_prompt()` with native `messages` array for Anthropic
-- [ ] Context window management: truncate history near token limit
-- [ ] Unit test: message array built correctly for multi-turn conversation
+- [x] Replace `build_prompt()` with native `messages` array for Anthropic
+- [x] Context window management: truncate history near token limit
+- [x] Unit test: message array built correctly for multi-turn conversation
 
 ---
 

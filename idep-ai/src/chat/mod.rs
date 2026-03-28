@@ -3,6 +3,7 @@
 use crate::backends::{ollama::OllamaBackend, Backend};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -191,7 +192,7 @@ impl ChatSession {
         // Add user message to history only after debounce passes
         self.history.push(ChatMessage::user(message));
 
-        // Try Ollama streaming first
+        // Try Ollama streaming first (for now, Anthropic uses the regular complete method)
         let result = if let Some(ollama) = self.backend.as_any().downcast_ref::<OllamaBackend>() {
             let result = ollama
                 .stream_completion(&prompt_with_context, 2048, |tok| on_token(tok))
@@ -234,6 +235,154 @@ impl ChatSession {
         }
         prompt.push_str(&format!("Human: {}\nAssistant: ", message));
         prompt
+    }
+
+    /// Build native message array with context for Anthropic and other modern backends
+    pub fn build_messages_with_context(
+        &self,
+        message: &str,
+        context: &str,
+    ) -> Vec<serde_json::Value> {
+        let mut messages = Vec::new();
+
+        // Add system message
+        if !self.system.is_empty() {
+            messages.push(json!({
+                "role": "user",
+                "content": format!("System: {}\n\n{}",
+                    if !context.is_empty() {
+                        format!("Context:\n{}\n\n", context)
+                    } else {
+                        String::new()
+                    },
+                    self.system
+                )
+            }));
+            messages.push(json!({
+                "role": "assistant",
+                "content": "Understood. I'll use this context and system information."
+            }));
+        } else if !context.is_empty() {
+            // If no system message but have context, add it as first user message
+            messages.push(json!({
+                "role": "user",
+                "content": format!("Context:\n{}", context)
+            }));
+            messages.push(json!({
+                "role": "assistant",
+                "content": "I understand the context. How can I help you?"
+            }));
+        }
+
+        // Add conversation history
+        for msg in &self.history {
+            let role = match msg.role {
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::System => continue, // Skip system messages in native format
+            };
+            messages.push(json!({
+                "role": role,
+                "content": msg.content
+            }));
+        }
+
+        // Add current message
+        messages.push(json!({
+            "role": "user",
+            "content": message
+        }));
+
+        messages
+    }
+
+    /// Build native message array without context
+    pub fn build_messages(&self) -> Vec<serde_json::Value> {
+        let mut messages = Vec::new();
+
+        // Add system message
+        if !self.system.is_empty() {
+            messages.push(json!({
+                "role": "user",
+                "content": format!("System: {}", self.system)
+            }));
+            messages.push(json!({
+                "role": "assistant",
+                "content": "Understood. I'll follow these instructions."
+            }));
+        }
+
+        // Add conversation history
+        for msg in &self.history {
+            let role = match msg.role {
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::System => continue, // Skip system messages in native format
+            };
+            messages.push(json!({
+                "role": role,
+                "content": msg.content
+            }));
+        }
+
+        messages
+    }
+
+    /// Build native message array with context window management
+    pub fn build_messages_with_window_management(
+        &self,
+        message: &str,
+        context: &str,
+        max_tokens: usize,
+    ) -> Vec<serde_json::Value> {
+        let mut messages = self.build_messages_with_context(message, context);
+
+        // Simple token estimation (rough approximation: ~4 chars per token)
+        let estimate_tokens = |text: &str| text.len() / 4;
+
+        // Calculate total tokens
+        let total_tokens = messages
+            .iter()
+            .map(|msg| msg.get("content").and_then(|v| v.as_str()).unwrap_or(""))
+            .map(estimate_tokens)
+            .sum::<usize>();
+
+        // If over limit, truncate oldest messages (keeping system/context and recent messages)
+        if total_tokens > max_tokens {
+            let mut messages_to_keep = Vec::new();
+            let mut current_tokens = 0;
+
+            // Always keep system/context messages (first 2-4 messages)
+            let system_msg_count = if !self.system.is_empty() { 2 } else { 0 };
+            let context_msg_count = if !context.is_empty() { 2 } else { 0 };
+            let keep_count = system_msg_count + context_msg_count;
+
+            // Keep system/context messages
+            for msg in messages.iter().take(keep_count) {
+                messages_to_keep.push(msg.clone());
+                if let Some(content) = msg.get("content").and_then(|v| v.as_str()) {
+                    current_tokens += estimate_tokens(content);
+                }
+            }
+
+            // Add recent messages from the end, staying within token limit
+            for msg in messages.iter().skip(keep_count).rev() {
+                let msg_tokens = msg
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .map(estimate_tokens)
+                    .unwrap_or(0);
+
+                if current_tokens + msg_tokens <= max_tokens {
+                    messages_to_keep.insert(keep_count, msg.clone());
+                    current_tokens += msg_tokens;
+                }
+            }
+
+            messages = messages_to_keep;
+        }
+
+        messages
     }
 
     /// Build a simple prompt string from history
@@ -293,3 +442,6 @@ mod tests {
 
 #[cfg(test)]
 mod integration_test;
+
+#[cfg(test)]
+mod native_format_test;
