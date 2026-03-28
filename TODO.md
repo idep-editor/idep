@@ -332,7 +332,7 @@
 
 ---
 
-### 🔴 v0.0.9 — RAG Context Injection
+### ✅ v0.0.9 — RAG Context Injection
 > **Gate:** Chat responses demonstrably reference correct codebase chunks; verified by test
 
 #### `idep-ai` — Context engine
