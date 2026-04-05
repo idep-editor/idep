@@ -42,8 +42,8 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 /// Vector store for embeddings with similarity search
 pub struct VectorStore {
-    // Store vectors directly instead of using HNSW for now to avoid lifetime issues
-    vectors: Vec<Vec<f32>>,
+    // Store vectors in a HashMap keyed by ID to avoid index shifting issues
+    vectors: HashMap<u64, Vec<f32>>,
     id_map: HashMap<u64, String>, // Map internal IDs to chunk identifiers
     next_id: u64,
 }
@@ -52,7 +52,7 @@ impl VectorStore {
     /// Create a new vector store for 384-dimensional embeddings
     pub fn new() -> Result<Self> {
         Ok(Self {
-            vectors: Vec::new(),
+            vectors: HashMap::new(),
             id_map: HashMap::new(),
             next_id: 0,
         })
@@ -71,7 +71,7 @@ impl VectorStore {
         }
 
         // Store the embedding vector
-        self.vectors.push(embedding.to_vec());
+        self.vectors.insert(id, embedding.to_vec());
 
         // Update state
         self.id_map.insert(id, chunk_id.to_string());
@@ -94,13 +94,12 @@ impl VectorStore {
         }
 
         // Compute cosine similarity with all vectors
-        let mut similarities: Vec<(usize, f32)> = self
+        let mut similarities: Vec<(u64, f32)> = self
             .vectors
             .iter()
-            .enumerate()
             .map(|(id, vec)| {
                 let similarity = cosine_similarity(embedding, vec);
-                (id, similarity)
+                (*id, similarity)
             })
             .collect();
 
@@ -122,10 +121,7 @@ impl VectorStore {
         let results: Vec<ScoredChunk> = similarities
             .into_iter()
             .take(top_k)
-            .map(|(id, score)| ScoredChunk {
-                id: id as u64,
-                score,
-            })
+            .map(|(id, score)| ScoredChunk { id, score })
             .collect();
 
         Ok(results)
@@ -163,7 +159,7 @@ impl VectorStore {
     pub fn load(path: &Path) -> Result<Self> {
         // Load vectors from JSON
         let vectors_json = std::fs::read_to_string(path)?;
-        let vectors: Vec<Vec<f32>> = serde_json::from_str(&vectors_json)?;
+        let vectors: HashMap<u64, Vec<f32>> = serde_json::from_str(&vectors_json)?;
 
         // Load the ID mapping with matching extension
         let id_map_path = path.with_extension("id_map.json");
@@ -194,27 +190,20 @@ impl VectorStore {
         self.id_map.get(&id).map(|s| s.as_str())
     }
 
-    /// Remove an embedding from the store (rebuilds the entire store)
-    /// Note: This is expensive but necessary for consistency
+    /// Remove an embedding from the store
+    /// Note: This is now efficient with HashMap - no need to rebuild
     pub fn delete(&mut self, id: u64) -> Result<()> {
         if self.id_map.remove(&id).is_some() {
-            // Rebuild the vectors array by filtering out the deleted embedding
-            let vector_index = id as usize;
-            if vector_index < self.vectors.len() {
-                self.vectors.remove(vector_index);
-
-                // Rebuild the ID map with updated indices
-                let mut new_id_map = HashMap::new();
-                for (old_id, chunk_id) in self.id_map.drain() {
-                    let new_id = if old_id > id { old_id - 1 } else { old_id };
-                    new_id_map.insert(new_id, chunk_id);
-                }
-                self.id_map = new_id_map;
-
-                // Update next_id if necessary
-                if self.next_id > id {
-                    self.next_id -= 1;
-                }
+            self.vectors.remove(&id);
+            // Update next_id if necessary (only if deleting the highest ID)
+            if self.next_id > id && self.next_id == id + 1 {
+                // Find the new highest ID
+                self.next_id = self
+                    .id_map
+                    .keys()
+                    .max()
+                    .map(|&max_id| max_id + 1)
+                    .unwrap_or(0);
             }
         }
         Ok(())
@@ -730,6 +719,48 @@ mod tests {
     }
 
     #[test]
+    fn vector_store_delete_maintains_consistency() {
+        let mut store = VectorStore::new().expect("Failed to create vector store");
+
+        // Add 5 embeddings
+        let embeddings: Vec<Vec<f32>> = (0..5).map(|i| vec![i as f32; 384]).collect();
+        let ids: Vec<u64> = embeddings
+            .iter()
+            .enumerate()
+            .map(|(i, emb)| store.add(&format!("chunk{}", i), emb).unwrap())
+            .collect();
+
+        // Verify initial state
+        assert_eq!(store.len(), 5);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4]);
+
+        // Delete middle chunk (ID 2)
+        store.delete(2).expect("Failed to delete chunk 2");
+
+        // Verify state after deletion
+        assert_eq!(store.len(), 4);
+        assert!(!store.id_map.contains_key(&2));
+
+        // Verify remaining IDs are still correct
+        assert!(store.id_map.contains_key(&0));
+        assert!(store.id_map.contains_key(&1));
+        assert!(store.id_map.contains_key(&3));
+        assert!(store.id_map.contains_key(&4));
+
+        // Test search still works
+        let query = vec![1.0; 384];
+        let results = store.find_similar(&query, 3).unwrap();
+        assert_eq!(results.len(), 3);
+
+        // Test we can still get chunk IDs
+        assert_eq!(store.get_chunk_id(0), Some("chunk0"));
+        assert_eq!(store.get_chunk_id(1), Some("chunk1"));
+        assert_eq!(store.get_chunk_id(3), Some("chunk3"));
+        assert_eq!(store.get_chunk_id(4), Some("chunk4"));
+        assert_eq!(store.get_chunk_id(2), None);
+    }
+
+    #[test]
     fn chunk_store_round_trip() {
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let store_path = temp_dir.path().join("test_chunks.json");
@@ -927,10 +958,15 @@ impl ProjectIndexer {
 
     /// Re-index a single file (diff-based)
     pub fn reindex_file(&mut self, path: &Path) -> Result<usize> {
-        // Normalize the path for comparison
-        let normalized_path = path
-            .canonicalize()
-            .map_err(|e| anyhow::anyhow!("Cannot canonicalize path {}: {}", path.display(), e))?;
+        // Try to normalize the path for comparison, but handle non-existent files gracefully
+        let normalized_path = match path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                // If the file doesn't exist, we can't reindex it
+                // This is expected for new files that haven't been saved yet
+                return Ok(0);
+            }
+        };
 
         // Remove old chunks for this file
         let chunks_to_remove: Vec<u64> = self
@@ -1081,7 +1117,14 @@ impl ProjectIndexer {
             }
             // Ensure forward progress by calculating overlap correctly
             let lines_added = end_line - i;
-            i += lines_added.saturating_sub(overlap).max(1);
+            // Move to the next chunk, ensuring we don't go backwards and don't skip too much
+            if lines_added <= overlap {
+                // If chunk is small or overlap is large, move forward at least 1 line
+                i = end_line + 1;
+            } else {
+                // Normal case: move to end_line - overlap to create overlap
+                i = end_line - overlap;
+            }
         }
 
         chunks
@@ -1217,6 +1260,23 @@ mod project_indexer_tests {
         // Verify loaded data
         assert_eq!(new_indexer.len(), original_count);
         assert!(!new_indexer.is_empty());
+    }
+
+    #[test]
+    fn project_indexer_reindex_nonexistent_file() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let project_path = temp_dir.path().join("test_project");
+        fs::create_dir(&project_path).expect("Failed to create project dir");
+
+        let mut indexer = ProjectIndexer::new(&project_path).expect("Failed to create indexer");
+
+        // Try to reindex a file that doesn't exist
+        let nonexistent_file = project_path.join("nonexistent.rs");
+        let result = indexer.reindex_file(&nonexistent_file);
+
+        // Should succeed but return 0 (no chunks removed)
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]
@@ -1359,6 +1419,65 @@ mod project_indexer_tests {
         println!("Estimated 50k LOC indexing time: {:?}", estimated_50k_time);
 
         println!("✅ Benchmark completed successfully!");
+    }
+
+    #[test]
+    fn naive_chunking_overlap_doesnt_skip_content() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let project_path = temp_dir.path().join("test_project");
+        fs::create_dir(&project_path).expect("Failed to create project dir");
+
+        let indexer = ProjectIndexer::new(&project_path).expect("Failed to create indexer");
+
+        // Create content with short lines to trigger overlap edge case
+        // Make it long enough to create multiple chunks (512 chars each)
+        let mut content = String::new();
+        for i in 1..=100 {
+            // Each line is about 50 chars, so 100 lines = ~5000 chars = ~10 chunks
+            content.push_str(&format!(
+                "This is line number {} with some additional text to make it longer\n",
+                i
+            ));
+        }
+        let path = project_path.join("test.txt");
+
+        let chunks = indexer.naive_chunk(&path, &content);
+
+        // Verify no lines are skipped - all lines should be covered
+        let mut covered_lines = std::collections::HashSet::new();
+        for chunk in &chunks {
+            for line_num in chunk.start_line..=chunk.end_line {
+                covered_lines.insert(line_num);
+            }
+        }
+
+        // Should cover lines 1-100
+        for line in 1..=100 {
+            assert!(
+                covered_lines.contains(&line),
+                "Line {} was not covered",
+                line
+            );
+        }
+
+        // Verify we have multiple chunks
+        assert!(
+            chunks.len() >= 2,
+            "Should have at least 2 chunks, got {}",
+            chunks.len()
+        );
+
+        // Verify overlap is working (chunks should overlap)
+        let mut has_overlap = false;
+        for window in chunks.windows(2) {
+            let first_end = window[0].end_line;
+            let second_start = window[1].start_line;
+            if second_start <= first_end {
+                has_overlap = true;
+                break;
+            }
+        }
+        assert!(has_overlap, "Chunks should overlap");
     }
 
     #[test]
