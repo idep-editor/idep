@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.0.9] — 2026-04-05
+
+### Added
+- **RAG Context Engine** for intelligent codebase context gathering
+- `ContextEngine` struct with query, workspace root, and cursor position support
+- `ContextEngine::gather()` method combining multiple context sources:
+  - Current file content (always included)
+  - AST subtree around cursor using Tree-sitter
+  - Top-k similar chunks from vector index
+  - Recent edit history (last N saves)
+- **Context serialization** to prompt-friendly text blocks
+- **Token budget manager** with configurable max context tokens (default 4096)
+- **Priority-based context truncation**: cursor context > similar chunks > history
+- **Chat with RAG integration** via `ChatSession::send_with_context()`
+- **Chat history export** with `ChatSession::export()` JSON serialization
+- **Anthropic native message format** replacing legacy prompt building
+- **Context window management** with intelligent history truncation
+
+### Fixed
+- **Message format compatibility** for Anthropic Claude API
+- **Context injection timing** to ensure proper prompt construction
+- **Token counting accuracy** for context budget management
+- **Priority truncation logic** to preserve most relevant context
+- **AST subtree extraction** for precise cursor context
+
+### Testing
+- **4 new integration tests** for RAG context functionality
+- **3 new context engine tests** covering creation and serialization
+- **4 new chat format tests** for native message building
+- **Context priority truncation tests** verifying budget management
+- **RAG function reference tests** ensuring accurate codebase responses
+- **All 27 idep-ai tests passing** with comprehensive coverage
+
+### Performance
+- **Context gathering**: <100ms for typical project queries
+- **Token budget management**: O(n) truncation with priority ordering
+- **RAG response quality**: Demonstrably references correct codebase chunks
+
+---
+
 ## [v0.0.8] — 2026-03-26
 
 ### Added
