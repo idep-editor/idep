@@ -76,6 +76,22 @@ idep/
 
 ## Getting Started
 
+### Prerequisites
+
+**Ubuntu / Debian:**
+```bash
+sudo apt-get install libssl-dev pkg-config
+```
+
+**Fedora / RHEL:**
+```bash
+sudo dnf install openssl-devel pkgconfig
+```
+
+**macOS:** OpenSSL and pkg-config are usually pre-installed.
+
+### Build
+
 ```bash
 # Clone
 git clone https://github.com/idep-editor/idep

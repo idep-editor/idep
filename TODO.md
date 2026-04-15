@@ -371,25 +371,25 @@
 > **Gate:** Open a file, move cursor, insert and delete text, save — all in terminal
 
 #### `idep-tui` crate
-- [ ] Add `idep-tui` to workspace
-- [ ] Add `ratatui` + `crossterm` deps
-- [ ] `App` struct: holds active buffer, cursor, mode (Normal/Insert)
-- [ ] Main event loop: read input → dispatch → render
-- [ ] Render: file content with line numbers
-- [ ] Render: status bar (filename, mode, cursor position, modified flag)
+- [x] Add `idep-tui` to workspace
+- [x] Add `ratatui` + `crossterm` deps
+- [x] `App` struct: holds active buffer, cursor, mode (Normal/Insert)
+- [x] Main event loop: read input → dispatch → render
+- [x] Render: file content with line numbers
+- [x] Render: status bar (filename, mode, cursor position, modified flag)
 
 #### Input handling
-- [ ] Normal mode: `h/j/k/l` cursor movement
-- [ ] Normal mode: `i` → Insert, `Esc` → Normal
+- [x] Normal mode: `h/j/k/l` cursor movement
+- [x] Normal mode: `i` → Insert, `Esc` → Normal
 - [ ] Normal mode: `w/b` word movement
 - [ ] Normal mode: `0/$` line start/end
 - [ ] Normal mode: `gg/G` file start/end
 - [ ] Normal mode: `dd` delete line
 - [ ] Normal mode: `u` undo, `Ctrl+r` redo
-- [ ] Insert mode: printable character insertion
-- [ ] Insert mode: `Backspace` / `Delete`
-- [ ] Insert mode: `Enter` (newline)
-- [ ] Insert mode: `Ctrl+s` save file
+- [x] Insert mode: printable character insertion
+- [x] Insert mode: `Backspace` / `Delete`
+- [x] Insert mode: `Enter` (newline)
+- [x] Insert mode: `Ctrl+s` save file
 - [ ] Command mode: `:w` save, `:q` quit, `:wq` save+quit, `:q!` force quit
 
 #### WSL2 — TUI platform verification

@@ -3,6 +3,26 @@
 Thanks for helping build Idep! Please follow these guidelines to keep the codebase healthy.
 
 ## Prerequisites
+
+### System dependencies
+
+**Ubuntu / Debian:**
+```bash
+sudo apt-get install libssl-dev pkg-config
+```
+
+**Fedora / RHEL:**
+```bash
+sudo dnf install openssl-devel pkgconfig
+```
+
+**macOS:**
+```bash
+# OpenSSL and pkg-config are usually pre-installed
+# If not: brew install openssl pkg-config
+```
+
+### Rust toolchain
 - Rust stable (pinned via `rust-toolchain.toml`)
 - `cargo fmt`, `cargo clippy`, `cargo test`
 - `pre-commit` installed (`pip install pre-commit`), then run `pre-commit install`

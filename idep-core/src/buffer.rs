@@ -79,9 +79,25 @@ impl Buffer {
         self.cursor = Cursor { line, column: col };
     }
 
-    fn cursor_char_index(&self) -> usize {
-        let line_start = self.rope.line_to_char(self.cursor.line);
-        line_start + self.cursor.column
+    /// Compute the absolute character index from the current cursor position.
+    pub fn cursor_char_index(&self) -> usize {
+        let line_start = self.rope.line_to_char(self.cursor.line.min(self.rope.len_lines().saturating_sub(1)));
+        line_start + self.cursor.column.min(self.rope.line(self.cursor.line).len_chars())
+    }
+
+    /// Set cursor to a specific (line, column) position.
+    /// Line and column are clamped to valid bounds.
+    pub fn set_cursor(&mut self, line: usize, column: usize) {
+        let max_line = self.rope.len_lines().saturating_sub(1);
+        let line = line.min(max_line);
+        let line_len = self.rope.line(line).len_chars();
+        // Clamp column to last character (allow cursor past last char for insertion)
+        let max_col = if line == max_line && self.rope.len_chars() > 0 {
+            line_len
+        } else {
+            line_len.saturating_sub(1)
+        };
+        self.cursor = Cursor { line, column: column.min(max_col) };
     }
 
     /// Apply a text edit: delete the range and insert new text.
@@ -115,16 +131,21 @@ impl Buffer {
     }
 
     fn update_cursor(&mut self, pos: usize) {
-        let line = self.rope.char_to_line(pos.min(self.rope.len_chars()));
-        let col = pos.saturating_sub(self.rope.line_to_char(line));
-        // Clamp column to last character index (trim trailing newline if present)
+        let len = self.rope.len_chars();
+        let pos = pos.min(len);
+        let line = self.rope.char_to_line(pos);
+        // Handle the case where pos == len (one-past-last-char)
+        let line = line.min(self.rope.len_lines().saturating_sub(1));
+        let line_start = self.rope.line_to_char(line);
+        let col = pos.saturating_sub(line_start);
+        // Clamp column to valid range (allow cursor at end for insertion)
         let line_len = self.rope.line(line).len_chars();
-        let line_len = if self.rope.line(line).chars().last() == Some('\n') {
-            line_len.saturating_sub(1)
+        let is_last_line = line == self.rope.len_lines().saturating_sub(1);
+        let max_col = if is_last_line {
+            line_len // Allow cursor past last char on last line
         } else {
-            line_len
+            line_len.saturating_sub(1) // Clamp before \n for non-last lines
         };
-        let max_col = line_len.saturating_sub(1);
         self.cursor.line = line;
         self.cursor.column = col.min(max_col);
     }
@@ -154,7 +175,8 @@ mod tests {
         assert_eq!(buf.to_string(), "hello world");
         let cursor = buf.cursor();
         assert_eq!(cursor.line, 0);
-        assert_eq!(cursor.column, "hello world".chars().count() - 1);
+        // Cursor positioned after inserted text (one past last char for insertion)
+        assert_eq!(cursor.column, 11);
     }
 
     #[test]

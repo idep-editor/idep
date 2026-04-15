@@ -5,6 +5,7 @@ members = [
     "idep-lsp",
     "idep-plugin",
     "idep-index",
+    "idep-tui",
 ]
 resolver = "2"
 
@@ -57,6 +58,11 @@ idep-ai      = { path = "idep-ai" }
 idep-lsp     = { path = "idep-lsp" }
 idep-plugin  = { path = "idep-plugin" }
 idep-index   = { path = "idep-index" }
+idep-tui     = { path = "idep-tui" }
 
 # WASM plugin runtime
 wasmtime     = { version = "21" }
+
+# TUI
+ratatui      = { version = "0.26", features = ["crossterm"] }
+crossterm    = { version = "0.27", features = ["event-stream"] }
