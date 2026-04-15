@@ -81,8 +81,16 @@ impl Buffer {
 
     /// Compute the absolute character index from the current cursor position.
     pub fn cursor_char_index(&self) -> usize {
-        let line_start = self.rope.line_to_char(self.cursor.line.min(self.rope.len_lines().saturating_sub(1)));
-        line_start + self.cursor.column.min(self.rope.line(self.cursor.line).len_chars())
+        let line_start = self.rope.line_to_char(
+            self.cursor
+                .line
+                .min(self.rope.len_lines().saturating_sub(1)),
+        );
+        line_start
+            + self
+                .cursor
+                .column
+                .min(self.rope.line(self.cursor.line).len_chars())
     }
 
     /// Set cursor to a specific (line, column) position.
@@ -97,7 +105,10 @@ impl Buffer {
         } else {
             line_len.saturating_sub(1)
         };
-        self.cursor = Cursor { line, column: column.min(max_col) };
+        self.cursor = Cursor {
+            line,
+            column: column.min(max_col),
+        };
     }
 
     /// Apply a text edit: delete the range and insert new text.

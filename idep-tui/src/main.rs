@@ -8,7 +8,7 @@ use idep_core::buffer::{Buffer, Cursor};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Margin},
-    style::{Color, Style, Modifier},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
@@ -30,6 +30,7 @@ impl Drop for TerminalGuard {
 enum Mode {
     Normal,
     Insert,
+    Command,
 }
 
 impl std::fmt::Display for Mode {
@@ -37,6 +38,7 @@ impl std::fmt::Display for Mode {
         match self {
             Mode::Normal => write!(f, "NORMAL"),
             Mode::Insert => write!(f, "INSERT"),
+            Mode::Command => write!(f, "COMMAND"),
         }
     }
 }
@@ -47,6 +49,11 @@ struct App {
     filename: Option<PathBuf>,
     scroll_offset: usize,
     modified: bool,
+    pending_g: bool,
+    pending_d: bool,
+    command_buffer: String,
+    should_quit: bool,
+    status_message: Option<String>,
 }
 
 impl App {
@@ -57,6 +64,11 @@ impl App {
             filename: None,
             scroll_offset: 0,
             modified: false,
+            pending_g: false,
+            pending_d: false,
+            command_buffer: String::new(),
+            should_quit: false,
+            status_message: None,
         }
     }
 
@@ -68,6 +80,11 @@ impl App {
             filename: Some(path),
             scroll_offset: 0,
             modified: false,
+            pending_g: false,
+            pending_d: false,
+            command_buffer: String::new(),
+            should_quit: false,
+            status_message: None,
         })
     }
 
@@ -87,12 +104,7 @@ impl App {
         };
 
         let line_len = lines.get(new_line).map(|l| l.chars().count()).unwrap_or(0);
-        // Allow cursor at end of line for insertion
-        let max_col = if new_line == line_count.saturating_sub(1) {
-            line_len
-        } else {
-            line_len
-        };
+        let max_col = line_len;
 
         let new_col = if dx < 0 {
             cursor.column.saturating_sub((-dx) as usize)
@@ -122,10 +134,164 @@ impl App {
         }
     }
 
+    fn undo(&mut self) {
+        self.status_message = Some("undo not yet implemented".to_string());
+    }
+
+    fn redo(&mut self) {
+        self.status_message = Some("redo not yet implemented".to_string());
+    }
+
+    fn move_word_forward(&mut self) {
+        let cursor = self.buffer.cursor();
+        let lines = self.buffer.lines();
+        let mut line_idx = cursor.line;
+        let mut col = cursor.column;
+
+        while let Some(line) = lines.get(line_idx) {
+            let chars: Vec<char> = line.chars().collect();
+
+            // Skip current word (if any)
+            while col < chars.len() && !chars[col].is_whitespace() {
+                col += 1;
+            }
+
+            // Skip whitespace
+            while col < chars.len() && chars[col].is_whitespace() {
+                col += 1;
+            }
+
+            // If we found a non-whitespace char, stop here
+            if col < chars.len() {
+                self.buffer.set_cursor(line_idx, col);
+                return;
+            }
+
+            // Move to next line
+            line_idx += 1;
+            col = 0;
+        }
+
+        // End of file - stay at last position
+        let last_line = lines.len().saturating_sub(1);
+        let last_col = lines.get(last_line).map(|l| l.chars().count()).unwrap_or(0);
+        self.buffer.set_cursor(last_line, last_col);
+    }
+
+    fn move_word_backward(&mut self) {
+        let cursor = self.buffer.cursor();
+        let lines = self.buffer.lines();
+        let mut line_idx = cursor.line;
+        let mut col = cursor.column;
+
+        // Handle starting at beginning of a line
+        if col == 0 {
+            if line_idx == 0 {
+                return; // Already at start of file
+            }
+            line_idx -= 1;
+            col = lines.get(line_idx).map(|l| l.chars().count()).unwrap_or(0);
+        } else {
+            col = col.saturating_sub(1);
+        }
+
+        while let Some(line) = lines.get(line_idx) {
+            let chars: Vec<char> = line.chars().collect();
+
+            // Skip whitespace going backward
+            while col > 0 && chars.get(col).map(|c| c.is_whitespace()).unwrap_or(false) {
+                col -= 1;
+            }
+
+            // If we're at a word char, skip the word going backward
+            if col > 0 && chars.get(col).map(|c| !c.is_whitespace()).unwrap_or(false) {
+                while col > 0
+                    && chars
+                        .get(col - 1)
+                        .map(|c| !c.is_whitespace())
+                        .unwrap_or(false)
+                {
+                    col -= 1;
+                }
+                self.buffer.set_cursor(line_idx, col);
+                return;
+            }
+
+            // Move to previous line
+            if line_idx == 0 {
+                self.buffer.set_cursor(0, 0);
+                return;
+            }
+            line_idx -= 1;
+            col = lines.get(line_idx).map(|l| l.chars().count()).unwrap_or(0);
+        }
+    }
+
+    fn move_to_line_start(&mut self) {
+        let cursor = self.buffer.cursor();
+        self.buffer.set_cursor(cursor.line, 0);
+    }
+
+    fn move_to_line_end(&mut self) {
+        let cursor = self.buffer.cursor();
+        let lines = self.buffer.lines();
+        let line_len = lines
+            .get(cursor.line)
+            .map(|l| l.chars().count())
+            .unwrap_or(0);
+        self.buffer.set_cursor(cursor.line, line_len);
+    }
+
+    fn move_to_file_start(&mut self) {
+        self.buffer.set_cursor(0, 0);
+    }
+
+    fn move_to_file_end(&mut self) {
+        let lines = self.buffer.lines();
+        let last_line = lines.len().saturating_sub(1);
+        let last_col = lines.last().map(|l| l.chars().count()).unwrap_or(0);
+        self.buffer.set_cursor(last_line, last_col);
+    }
+
+    fn delete_line(&mut self) {
+        let cursor = self.buffer.cursor();
+        let lines = self.buffer.lines();
+        if let Some(line) = lines.get(cursor.line) {
+            let start_pos = self.line_start_pos(cursor.line);
+            let line_char_count = line.chars().count();
+            let end_pos = if cursor.line == lines.len().saturating_sub(1) {
+                // Last line: delete to end of buffer
+                start_pos + line_char_count
+            } else {
+                // Not last line: include the newline
+                start_pos + line_char_count + 1
+            };
+            let total_chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
+                + lines.len().saturating_sub(1); // Add newlines
+            let end_pos = end_pos.min(total_chars);
+            self.buffer.delete(start_pos..end_pos);
+            self.modified = true;
+            // Move cursor to start of line (or previous line if this was the last)
+            let new_line = cursor.line.min(self.buffer.lines().len().saturating_sub(1));
+            self.buffer.set_cursor(new_line, 0);
+        }
+    }
+
+    fn line_start_pos(&self, line_idx: usize) -> usize {
+        let lines = self.buffer.lines();
+        lines[..line_idx]
+            .iter()
+            .map(|l| l.chars().count() + 1) // +1 for newline
+            .sum::<usize>()
+    }
+
     fn save(&mut self) -> Result<()> {
         if let Some(ref path) = self.filename {
             std::fs::write(path, self.buffer.to_string())?;
             self.modified = false;
+            self.status_message = Some(format!("saved {}", path.display()));
+        } else {
+            self.status_message = Some("error: no filename".to_string());
         }
         Ok(())
     }
@@ -137,6 +303,38 @@ impl App {
         } else if cursor.line >= self.scroll_offset + viewport_height {
             self.scroll_offset = cursor.line.saturating_sub(viewport_height - 1);
         }
+    }
+
+    fn execute_command(&mut self) -> Result<()> {
+        let cmd = self.command_buffer.trim();
+        match cmd {
+            "w" => {
+                self.save()?;
+            }
+            "q" => {
+                if self.modified {
+                    self.status_message =
+                        Some("error: unsaved changes (use :q! to force)".to_string());
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            "wq" => {
+                self.save()?;
+                if self.filename.is_some() {
+                    self.should_quit = true;
+                }
+            }
+            "q!" => {
+                self.should_quit = true;
+            }
+            _ => {
+                self.status_message = Some(format!("unknown command: {}", cmd));
+            }
+        }
+        self.command_buffer.clear();
+        self.mode = Mode::Normal;
+        Ok(())
     }
 }
 
@@ -158,10 +356,9 @@ fn main() -> Result<()> {
 
     let mut terminal = setup_terminal()?;
     let _guard = TerminalGuard;
-    let mut should_quit = false;
     let mut last_viewport_height: usize = 0;
 
-    while !should_quit {
+    while !app.should_quit {
         // Compute layout to get viewport height for scroll update
         let size = terminal.size()?;
         let viewport_height = size.height.saturating_sub(1) as usize;
@@ -175,7 +372,7 @@ fn main() -> Result<()> {
         if event::poll(std::time::Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    should_quit = handle_key_event(&mut app, key)?;
+                    handle_key_event(&mut app, key)?;
                     // Update scroll after any cursor-moving operation
                     app.update_scroll(viewport_height);
                 }
@@ -186,28 +383,80 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<bool> {
-    // Handle Ctrl+S (save) in both modes
+fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
+    // Handle Ctrl+S (save) in both Normal and Insert modes
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('s') | KeyCode::Char('\u{0013}') => {
                 app.save()?;
-                return Ok(false);
+                return Ok(());
             }
             _ => {}
         }
     }
 
     match app.mode {
+        Mode::Command => match key.code {
+            KeyCode::Enter => {
+                app.execute_command()?;
+            }
+            KeyCode::Esc => {
+                app.command_buffer.clear();
+                app.mode = Mode::Normal;
+            }
+            KeyCode::Backspace => {
+                app.command_buffer.pop();
+            }
+            KeyCode::Char(c) => {
+                // Only accept printable ASCII characters (32-126)
+                if c.is_ascii_graphic() || c == ' ' {
+                    app.command_buffer.push(c);
+                }
+            }
+            _ => {}
+        },
         Mode::Normal => match key.code {
-            KeyCode::Char('q') => return Ok(true),
-            KeyCode::Char('i') => app.mode = Mode::Insert,
+            KeyCode::Char(':') => {
+                app.pending_g = false;
+                app.pending_d = false;
+                app.mode = Mode::Command;
+                app.command_buffer.clear();
+            }
+            KeyCode::Char('q') => app.should_quit = true,
+            KeyCode::Char('i') => {
+                app.pending_g = false;
+                app.pending_d = false;
+                app.mode = Mode::Insert;
+            }
             KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
             KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
             KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
             KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
-            KeyCode::Esc => {}
-            _ => {}
+            KeyCode::Char('w') => app.move_word_forward(),
+            KeyCode::Char('b') => app.move_word_backward(),
+            KeyCode::Char('0') => app.move_to_line_start(),
+            KeyCode::Char('$') => app.move_to_line_end(),
+            KeyCode::Char('g') if app.pending_g => {
+                app.move_to_file_start();
+                app.pending_g = false;
+            }
+            KeyCode::Char('g') => app.pending_g = true,
+            KeyCode::Char('G') => app.move_to_file_end(),
+            KeyCode::Char('d') if app.pending_d => {
+                app.delete_line();
+                app.pending_d = false;
+            }
+            KeyCode::Char('d') => app.pending_d = true,
+            KeyCode::Char('u') => app.undo(),
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => app.redo(),
+            KeyCode::Esc => {
+                app.pending_g = false;
+                app.pending_d = false;
+            }
+            _ => {
+                app.pending_g = false;
+                app.pending_d = false;
+            }
         },
         Mode::Insert => match key.code {
             KeyCode::Esc => app.mode = Mode::Normal,
@@ -217,7 +466,7 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<bool> {
             _ => {}
         },
     }
-    Ok(false)
+    Ok(())
 }
 
 fn render(app: &App, frame: &mut Frame) {
@@ -315,12 +564,18 @@ fn render(app: &App, frame: &mut Frame) {
         })
         .collect();
 
-    let line_numbers_widget = Paragraph::new(line_numbers)
-        .block(Block::default().borders(Borders::NONE).style(Style::default().bg(Color::Black)));
+    let line_numbers_widget = Paragraph::new(line_numbers).block(
+        Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(Color::Black)),
+    );
     frame.render_widget(line_numbers_widget, line_numbers_area);
 
-    let editor_widget = Paragraph::new(text_content)
-        .block(Block::default().borders(Borders::NONE).style(Style::default().bg(Color::Black)));
+    let editor_widget = Paragraph::new(text_content).block(
+        Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(Color::Black)),
+    );
     frame.render_widget(editor_widget, editor_area);
 
     let filename_str = app
@@ -332,26 +587,45 @@ fn render(app: &App, frame: &mut Frame) {
     let modified_str = if app.modified { " [+]" } else { "" };
     let cursor = app.cursor();
 
-    let status_spans = vec![
-        Span::styled(
-            format!("{}:{}", cursor.line + 1, cursor.column + 1),
+    let status_spans = if app.mode == Mode::Command {
+        vec![Span::styled(
+            format!(":{}", app.command_buffer),
             Style::default().fg(Color::White),
-        ),
-        Span::raw(" | "),
-        Span::styled(
-            app.mode.to_string(),
-            if app.mode == Mode::Insert {
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
-            },
-        ),
-        Span::raw(" | "),
-        Span::styled(
-            format!("{}{}", filename_str, modified_str),
-            Style::default().fg(Color::White),
-        ),
-    ];
+        )]
+    } else if let Some(ref msg) = app.status_message {
+        let is_error = msg.starts_with("error:");
+        let style = if is_error {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(Color::Green)
+        };
+        vec![Span::styled(msg.clone(), style)]
+    } else {
+        vec![
+            Span::styled(
+                format!("{}:{}", cursor.line + 1, cursor.column + 1),
+                Style::default().fg(Color::White),
+            ),
+            Span::raw(" | "),
+            Span::styled(
+                app.mode.to_string(),
+                if app.mode == Mode::Insert {
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::BOLD)
+                },
+            ),
+            Span::raw(" | "),
+            Span::styled(
+                format!("{}{}", filename_str, modified_str),
+                Style::default().fg(Color::White),
+            ),
+        ]
+    };
 
     let status_bar = Paragraph::new(Line::from(status_spans))
         .style(Style::default().bg(Color::DarkGray).fg(Color::White));

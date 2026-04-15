@@ -381,16 +381,16 @@
 #### Input handling
 - [x] Normal mode: `h/j/k/l` cursor movement
 - [x] Normal mode: `i` → Insert, `Esc` → Normal
-- [ ] Normal mode: `w/b` word movement
-- [ ] Normal mode: `0/$` line start/end
-- [ ] Normal mode: `gg/G` file start/end
-- [ ] Normal mode: `dd` delete line
-- [ ] Normal mode: `u` undo, `Ctrl+r` redo
+- [x] Normal mode: `w/b` word movement
+- [x] Normal mode: `0/$` line start/end
+- [x] Normal mode: `gg/G` file start/end
+- [x] Normal mode: `dd` delete line
+- [x] Normal mode: `u` undo, `Ctrl+r` redo
 - [x] Insert mode: printable character insertion
 - [x] Insert mode: `Backspace` / `Delete`
 - [x] Insert mode: `Enter` (newline)
 - [x] Insert mode: `Ctrl+s` save file
-- [ ] Command mode: `:w` save, `:q` quit, `:wq` save+quit, `:q!` force quit
+- [x] Command mode: `:w` save, `:q` quit, `:wq` save+quit, `:q!` force quit
 
 #### WSL2 — TUI platform verification
 - [ ] Test: TUI renders correctly in Windows Terminal (WSL2 backend)
