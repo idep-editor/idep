@@ -14,3 +14,6 @@
 .fastembed_cache/
 *.onnx
 *.lock
+.skill/
+.cursor/rules/skill-context.md
+.windsurf/rules/skill-context.md
