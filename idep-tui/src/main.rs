@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
-use signal_hook::consts::SIGINT;
+use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::flag::register;
 use std::io::{self, stdout};
 use std::path::PathBuf;
@@ -36,7 +36,8 @@ impl Drop for TerminalGuard {
 
 /// Setup signal handlers for graceful shutdown.
 fn setup_signal_handler(running: Arc<AtomicBool>) -> Result<()> {
-    register(SIGINT, running)?;
+    register(SIGINT, Arc::clone(&running))?;
+    register(SIGTERM, running)?;
     Ok(())
 }
 
