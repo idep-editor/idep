@@ -398,12 +398,10 @@ fn main() -> Result<()> {
 
         if event::poll(std::time::Duration::from_millis(16))? {
             match event::read()? {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        handle_key_event(&mut app, key)?;
-                        // Update scroll after any cursor-moving operation
-                        app.update_scroll(viewport_height);
-                    }
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    handle_key_event(&mut app, key)?;
+                    // Update scroll after any cursor-moving operation
+                    app.update_scroll(viewport_height);
                 }
                 Event::Mouse(mouse) => {
                     handle_mouse_event(&mut app, mouse, viewport_height);
@@ -436,22 +434,20 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent, viewport_height: usize) 
             // Scroll up by 3 lines
             app.scroll_offset = app.scroll_offset.saturating_sub(3);
         }
-        MouseEventKind::Down(_) => {
+        MouseEventKind::Down(_) if mouse.column >= line_num_width => {
             // Click to position cursor
             // Mouse column includes line number gutter, so adjust
-            if mouse.column >= line_num_width {
-                let editor_col = mouse.column - line_num_width;
-                let clicked_line = app.scroll_offset + mouse.row as usize;
-                let lines = app.buffer.lines();
+            let editor_col = mouse.column - line_num_width;
+            let clicked_line = app.scroll_offset + mouse.row as usize;
+            let lines = app.buffer.lines();
 
-                if clicked_line < lines.len() {
-                    let line_len = lines
-                        .get(clicked_line)
-                        .map(|l| l.chars().count())
-                        .unwrap_or(0);
-                    let new_col = (editor_col as usize).min(line_len);
-                    app.buffer.set_cursor(clicked_line, new_col);
-                }
+            if clicked_line < lines.len() {
+                let line_len = lines
+                    .get(clicked_line)
+                    .map(|l| l.chars().count())
+                    .unwrap_or(0);
+                let new_col = (editor_col as usize).min(line_len);
+                app.buffer.set_cursor(clicked_line, new_col);
             }
         }
         _ => {}
@@ -482,11 +478,9 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
             KeyCode::Backspace => {
                 app.command_buffer.pop();
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if c.is_ascii_graphic() || c == ' ' => {
                 // Only accept printable ASCII characters (32-126)
-                if c.is_ascii_graphic() || c == ' ' {
-                    app.command_buffer.push(c);
-                }
+                app.command_buffer.push(c);
             }
             _ => {}
         },
