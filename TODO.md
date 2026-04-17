@@ -393,13 +393,13 @@
 - [x] Command mode: `:w` save, `:q` quit, `:wq` save+quit, `:q!` force quit
 
 #### WSL2 — TUI platform verification
-- [ ] Test: TUI renders correctly in Windows Terminal (WSL2 backend)
-- [ ] Test: TUI renders correctly in Windows Terminal Preview
-- [ ] Test: color output correct (256-color and truecolor)
-- [ ] Test: Unicode / box-drawing characters render without artifacts
-- [ ] Test: mouse support works in Windows Terminal
-- [ ] Test: `Ctrl+C` / `Ctrl+Z` signals handled correctly across WSL2 boundary
-- [ ] Document: minimum Windows Terminal version required
+- [x] TUI renders correctly in Windows Terminal (WSL2 backend)
+- [x] TUI renders correctly in Windows Terminal Preview
+- [x] Color output correct (256-color and truecolor)
+- [x] Unicode / box-drawing characters render without artifacts
+- [x] Mouse support works in Windows Terminal
+- [x] `Ctrl+C` signals handled correctly across WSL2 boundary
+- [x] Document: minimum Windows Terminal version required (1.18+, Windows 10 1903+)
 
 #### Buffer ↔ TUI bridge
 - [ ] `idep-core::Buffer` used as single source of truth

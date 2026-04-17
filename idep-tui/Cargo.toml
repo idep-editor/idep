@@ -22,3 +22,4 @@ tracing.workspace   = true
 
 ratatui.workspace = true
 crossterm.workspace = true
+signal-hook = "0.3"

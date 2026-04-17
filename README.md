@@ -90,6 +90,19 @@ sudo dnf install openssl-devel pkgconfig
 
 **macOS:** OpenSSL and pkg-config are usually pre-installed.
 
+### Terminal Requirements
+
+**Windows (WSL2):**
+- Windows Terminal 1.18+ (required for mouse support and truecolor)
+- Windows 10 version 1903+ (build 18362+)
+
+**Linux:**
+- Any terminal with 256-color or truecolor support
+- Mouse support requires terminal with X10 or SGR 1006 mouse protocol
+
+**macOS:**
+- Terminal.app (basic support) or iTerm2 3.4+ (recommended)
+
 ### Build
 
 ```bash

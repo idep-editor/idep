@@ -1,6 +1,9 @@
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseEvent, MouseEventKind,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -13,8 +16,11 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
+use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::io::{self, stdout};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// Guard to ensure terminal is restored even on panic or early exit.
 struct TerminalGuard;
@@ -22,8 +28,23 @@ struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
+        let _ = stdout().execute(DisableMouseCapture);
         let _ = stdout().execute(LeaveAlternateScreen);
     }
+}
+
+/// Setup signal handlers for graceful shutdown.
+fn setup_signal_handler(running: Arc<AtomicBool>) -> Result<()> {
+    let mut signals = Signals::new([SIGINT])?;
+    std::thread::spawn(move || {
+        for sig in signals.forever() {
+            if sig == SIGINT {
+                running.store(false, Ordering::SeqCst);
+                break;
+            }
+        }
+    });
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -341,6 +362,7 @@ impl App {
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
+    stdout().execute(EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout());
     let terminal = Terminal::new(backend)?;
     Ok(terminal)
@@ -358,7 +380,11 @@ fn main() -> Result<()> {
     let _guard = TerminalGuard;
     let mut last_viewport_height: usize = 0;
 
-    while !app.should_quit {
+    // Setup signal handler for graceful Ctrl+C handling
+    let running = Arc::new(AtomicBool::new(true));
+    setup_signal_handler(running.clone())?;
+
+    while !app.should_quit && running.load(Ordering::SeqCst) {
         // Compute layout to get viewport height for scroll update
         let size = terminal.size()?;
         let viewport_height = size.height.saturating_sub(1) as usize;
@@ -370,17 +396,63 @@ fn main() -> Result<()> {
         terminal.draw(|f| render(&app, f))?;
 
         if event::poll(std::time::Duration::from_millis(16))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    handle_key_event(&mut app, key)?;
-                    // Update scroll after any cursor-moving operation
-                    app.update_scroll(viewport_height);
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        handle_key_event(&mut app, key)?;
+                        // Update scroll after any cursor-moving operation
+                        app.update_scroll(viewport_height);
+                    }
                 }
+                Event::Mouse(mouse) => {
+                    handle_mouse_event(&mut app, mouse, viewport_height);
+                }
+                Event::Resize(_, _) => {
+                    // Terminal resized - scroll update will happen on next loop iteration
+                }
+                _ => {}
             }
         }
     }
 
     Ok(())
+}
+
+/// Handle mouse events for scrolling and cursor positioning.
+fn handle_mouse_event(app: &mut App, mouse: MouseEvent, viewport_height: usize) {
+    let line_num_width = app.line_number_width();
+
+    match mouse.kind {
+        MouseEventKind::ScrollDown => {
+            // Scroll down by 3 lines
+            let lines = app.buffer.lines();
+            let max_scroll = lines.len().saturating_sub(viewport_height);
+            app.scroll_offset = (app.scroll_offset + 3).min(max_scroll);
+        }
+        MouseEventKind::ScrollUp => {
+            // Scroll up by 3 lines
+            app.scroll_offset = app.scroll_offset.saturating_sub(3);
+        }
+        MouseEventKind::Down(_) => {
+            // Click to position cursor
+            // Mouse column includes line number gutter, so adjust
+            if mouse.column >= line_num_width {
+                let editor_col = mouse.column - line_num_width;
+                let clicked_line = app.scroll_offset + mouse.row as usize;
+                let lines = app.buffer.lines();
+
+                if clicked_line < lines.len() {
+                    let line_len = lines
+                        .get(clicked_line)
+                        .map(|l| l.chars().count())
+                        .unwrap_or(0);
+                    let new_col = (editor_col as usize).min(line_len);
+                    app.buffer.set_cursor(clicked_line, new_col);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
