@@ -402,9 +402,9 @@
 - [x] Document: minimum Windows Terminal version required (1.18+, Windows 10 1903+)
 
 #### Buffer ↔ TUI bridge
-- [ ] `idep-core::Buffer` used as single source of truth
-- [ ] Undo/redo history in buffer (configurable depth, default 100)
-- [ ] Unit test: undo/redo sequence correct after series of edits
+- [x] `idep-core::Buffer` used as single source of truth
+- [x] Undo/redo history in buffer (configurable depth, default 100)
+- [x] Unit test: undo/redo sequence correct after series of edits
 
 ---
 

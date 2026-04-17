@@ -149,11 +149,21 @@ impl App {
     }
 
     fn undo(&mut self) {
-        self.status_message = Some("undo not yet implemented".to_string());
+        if self.buffer.undo() {
+            self.modified = true;
+            self.status_message = Some("undone".to_string());
+        } else {
+            self.status_message = Some("nothing to undo".to_string());
+        }
     }
 
     fn redo(&mut self) {
-        self.status_message = Some("redo not yet implemented".to_string());
+        if self.buffer.redo() {
+            self.modified = true;
+            self.status_message = Some("redone".to_string());
+        } else {
+            self.status_message = Some("nothing to redo".to_string());
+        }
     }
 
     fn move_word_forward(&mut self) {
