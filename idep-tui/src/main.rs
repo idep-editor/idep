@@ -279,34 +279,26 @@ impl App {
 
     fn delete_line(&mut self) {
         let cursor = self.buffer.cursor();
-        let lines = self.buffer.lines();
-        if let Some(line) = lines.get(cursor.line) {
-            let start_pos = self.line_start_pos(cursor.line);
-            let line_char_count = line.chars().count();
-            let end_pos = if cursor.line == lines.len().saturating_sub(1) {
-                // Last line: delete to end of buffer
-                start_pos + line_char_count
-            } else {
-                // Not last line: include the newline
-                start_pos + line_char_count + 1
-            };
-            let total_chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
-                + lines.len().saturating_sub(1); // Add newlines
-            let end_pos = end_pos.min(total_chars);
-            self.buffer.delete(start_pos..end_pos);
-            self.modified = true;
-            // Move cursor to start of line (or previous line if this was the last)
-            let new_line = cursor.line.min(self.buffer.lines().len().saturating_sub(1));
-            self.buffer.set_cursor(new_line, 0);
-        }
-    }
+        let rope = self.buffer.rope();
+        let line_idx = cursor.line.min(rope.len_lines().saturating_sub(1));
+        let line = rope.line(line_idx);
+        let line_char_count = line.len_chars();
 
-    fn line_start_pos(&self, line_idx: usize) -> usize {
-        let lines = self.buffer.lines();
-        lines[..line_idx]
-            .iter()
-            .map(|l| l.chars().count() + 1) // +1 for newline
-            .sum::<usize>()
+        let start_pos = rope.line_to_char(line_idx);
+        let end_pos = if line_idx == rope.len_lines().saturating_sub(1) {
+            // Last line: delete to end of buffer
+            start_pos + line_char_count
+        } else {
+            // Not last line: include the newline
+            start_pos + line_char_count
+        };
+
+        self.buffer.delete(start_pos..end_pos);
+        self.modified = true;
+
+        // Move cursor to start of line (or previous line if this was the last)
+        let new_line = line_idx.min(self.buffer.lines().len().saturating_sub(1));
+        self.buffer.set_cursor(new_line, 0);
     }
 
     fn save(&mut self) -> Result<()> {
@@ -331,6 +323,12 @@ impl App {
 
     fn execute_command(&mut self) -> Result<()> {
         let cmd = self.command_buffer.trim();
+        if cmd.is_empty() {
+            // Empty command - just return to normal mode silently
+            self.command_buffer.clear();
+            self.mode = Mode::Normal;
+            return Ok(());
+        }
         match cmd {
             "w" => {
                 self.save()?;
@@ -492,56 +490,64 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
             }
             _ => {}
         },
-        Mode::Normal => match key.code {
-            KeyCode::Char(':') => {
-                app.pending_g = false;
-                app.pending_d = false;
-                app.mode = Mode::Command;
-                app.command_buffer.clear();
+        Mode::Normal => {
+            // Clear any status message on keypress
+            app.status_message = None;
+            match key.code {
+                KeyCode::Char(':') => {
+                    app.pending_g = false;
+                    app.pending_d = false;
+                    app.mode = Mode::Command;
+                    app.command_buffer.clear();
+                }
+                KeyCode::Char('q') => app.should_quit = true,
+                KeyCode::Char('i') => {
+                    app.pending_g = false;
+                    app.pending_d = false;
+                    app.mode = Mode::Insert;
+                }
+                KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
+                KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
+                KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
+                KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
+                KeyCode::Char('w') => app.move_word_forward(),
+                KeyCode::Char('b') => app.move_word_backward(),
+                KeyCode::Char('0') => app.move_to_line_start(),
+                KeyCode::Char('$') => app.move_to_line_end(),
+                KeyCode::Char('g') if app.pending_g => {
+                    app.move_to_file_start();
+                    app.pending_g = false;
+                }
+                KeyCode::Char('g') => app.pending_g = true,
+                KeyCode::Char('G') => app.move_to_file_end(),
+                KeyCode::Char('d') if app.pending_d => {
+                    app.delete_line();
+                    app.pending_d = false;
+                }
+                KeyCode::Char('d') => app.pending_d = true,
+                KeyCode::Char('u') => app.undo(),
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => app.redo(),
+                KeyCode::Esc => {
+                    app.pending_g = false;
+                    app.pending_d = false;
+                }
+                _ => {
+                    app.pending_g = false;
+                    app.pending_d = false;
+                }
             }
-            KeyCode::Char('q') => app.should_quit = true,
-            KeyCode::Char('i') => {
-                app.pending_g = false;
-                app.pending_d = false;
-                app.mode = Mode::Insert;
+        }
+        Mode::Insert => {
+            // Clear any status message on keypress
+            app.status_message = None;
+            match key.code {
+                KeyCode::Esc => app.mode = Mode::Normal,
+                KeyCode::Char(c) => app.insert_char(c),
+                KeyCode::Backspace => app.delete_char(),
+                KeyCode::Enter => app.insert_char('\n'),
+                _ => {}
             }
-            KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
-            KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
-            KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
-            KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
-            KeyCode::Char('w') => app.move_word_forward(),
-            KeyCode::Char('b') => app.move_word_backward(),
-            KeyCode::Char('0') => app.move_to_line_start(),
-            KeyCode::Char('$') => app.move_to_line_end(),
-            KeyCode::Char('g') if app.pending_g => {
-                app.move_to_file_start();
-                app.pending_g = false;
-            }
-            KeyCode::Char('g') => app.pending_g = true,
-            KeyCode::Char('G') => app.move_to_file_end(),
-            KeyCode::Char('d') if app.pending_d => {
-                app.delete_line();
-                app.pending_d = false;
-            }
-            KeyCode::Char('d') => app.pending_d = true,
-            KeyCode::Char('u') => app.undo(),
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => app.redo(),
-            KeyCode::Esc => {
-                app.pending_g = false;
-                app.pending_d = false;
-            }
-            _ => {
-                app.pending_g = false;
-                app.pending_d = false;
-            }
-        },
-        Mode::Insert => match key.code {
-            KeyCode::Esc => app.mode = Mode::Normal,
-            KeyCode::Char(c) => app.insert_char(c),
-            KeyCode::Backspace => app.delete_char(),
-            KeyCode::Enter => app.insert_char('\n'),
-            _ => {}
-        },
+        }
     }
     Ok(())
 }

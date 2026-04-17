@@ -144,6 +144,11 @@ impl Buffer {
         self.cursor
     }
 
+    /// Access the underlying rope for efficient operations.
+    pub fn rope(&self) -> &Rope {
+        &self.rope
+    }
+
     /// Move cursor to end of buffer (last line, after last char).
     pub fn move_cursor_to_end(&mut self) {
         let len = self.rope.len_chars();
