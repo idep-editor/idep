@@ -9,8 +9,8 @@
 [![Build status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/idep-editor/idep/actions)
 [![Sponsor](https://img.shields.io/github/sponsors/idep-editor)](https://github.com/sponsors/idep-editor)
 
-> ⚠️ **Pre-alpha — no release binary yet.**  
-> The AI backend layer compiles and is tested. The editor UI does not exist yet.  
+> ⚠️ **Alpha — no release binary yet.**  
+> v0.1.0: Terminal editor functional. v0.2.0 will add syntax highlighting.  
 > Follow along or contribute — see [TODO.md](TODO.md) for what's next.
 
 A lightweight, Rust-native AI-powered IDE.  
@@ -198,6 +198,7 @@ See [example/ollama-smoketest.md](example/ollama-smoketest.md) for detailed step
 | `idep-core` buffer | ✅ Complete (v0.0.2) |
 | `idep-core` workspace | ✅ Complete (v0.0.2) |
 | `idep-lsp` bridge | ✅ Complete (v0.0.2) |
+| `idep-tui` editor | ✅ Complete (v0.1.0) |
 
 ---
 

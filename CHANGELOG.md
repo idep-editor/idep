@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.1.0] — 2026-04-17
+
+### Added
+- **Terminal UI Editor** (`idep-tui`) — fully functional terminal-based text editor
+- **Normal mode navigation**: `h/j/k/l` (arrows), `w/b` (word movement), `0/$` (line bounds), `gg/G` (file bounds)
+- **Line editing**: `dd` delete line, `u`/`Ctrl+r` undo/redo with history
+- **Insert mode**: character insertion, `Backspace`, `Enter`, `Ctrl+s` save
+- **Command mode**: `:w` save, `:q` quit, `:wq` save+quit, `:q!` force quit
+- **Buffer undo/redo history** in `idep-core::Buffer` — configurable depth (default 100)
+- **Status bar** showing cursor position, mode, filename, and status messages
+- **Mouse support**: scroll and click-to-position cursor
+- **Signal handling**: graceful `Ctrl+C` shutdown
+- **WSL2 platform verification** — Windows Terminal 1.18+ compatibility documented
+
+### Changed
+- `idep-core::Buffer` is now single source of truth for all text operations
+- Optimized `delete_line()` to use ropey API directly (eliminates redundant allocations)
+
+### Testing
+- **10 new undo/redo tests** for Buffer history functionality
+- **WSL2 integration tests** for terminal rendering and mouse support
+- **All 28 idep-core tests passing**
+
+### Fixed
+- Status message persistence — now clears on keypress
+- Empty command handling — `:Enter` no longer shows "unknown command"
+- Clippy warnings for collapsible match arms and unnecessary sort_by
+
+---
+
 ## [v0.0.9] — 2026-04-05
 
 ### Added
