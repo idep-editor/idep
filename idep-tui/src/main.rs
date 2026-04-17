@@ -16,7 +16,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
 };
-use signal_hook::{consts::SIGINT, iterator::Signals};
+use signal_hook::consts::SIGINT;
+use signal_hook::flag::register;
 use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,15 +36,7 @@ impl Drop for TerminalGuard {
 
 /// Setup signal handlers for graceful shutdown.
 fn setup_signal_handler(running: Arc<AtomicBool>) -> Result<()> {
-    let mut signals = Signals::new([SIGINT])?;
-    std::thread::spawn(move || {
-        for sig in signals.forever() {
-            if sig == SIGINT {
-                running.store(false, Ordering::SeqCst);
-                break;
-            }
-        }
-    });
+    register(SIGINT, running)?;
     Ok(())
 }
 
@@ -406,6 +399,8 @@ fn main() -> Result<()> {
                 }
                 Event::Mouse(mouse) => {
                     handle_mouse_event(&mut app, mouse, viewport_height);
+                    // Update scroll after mouse scroll to ensure cursor stays visible
+                    app.update_scroll(viewport_height);
                 }
                 Event::Resize(_, _) => {
                     // Terminal resized - scroll update will happen on next loop iteration
