@@ -336,8 +336,9 @@ impl App {
             }
             "q" => {
                 if self.modified {
-                    self.status_message =
-                        Some("error: unsaved changes (use :q! to force)".to_string());
+                    self.status_message = Some(
+                        "error: unsaved changes (use :wq to save or :q! to force)".to_string(),
+                    );
                 } else {
                     self.should_quit = true;
                 }
