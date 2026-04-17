@@ -93,7 +93,9 @@ impl Buffer {
         );
         self.undo_stack.push(edit);
         self.redo_stack.clear();
-        self.maintain_history_limit();
+        if self.undo_stack.len() > self.max_history {
+            self.maintain_history_limit();
+        }
     }
 
     /// Delete a character range [start, end); no-op if invalid range
@@ -121,7 +123,9 @@ impl Buffer {
         );
         self.undo_stack.push(edit);
         self.redo_stack.clear();
-        self.maintain_history_limit();
+        if self.undo_stack.len() > self.max_history {
+            self.maintain_history_limit();
+        }
     }
 
     pub fn lines(&self) -> Vec<String> {
@@ -314,12 +318,14 @@ impl Buffer {
 
     /// Remove old entries if we exceed the max history size.
     fn maintain_history_limit(&mut self) {
-        while self.undo_stack.len() > self.max_history {
-            self.undo_stack.remove(0);
+        if self.undo_stack.len() > self.max_history {
+            let excess = self.undo_stack.len() - self.max_history;
+            self.undo_stack.drain(0..excess);
         }
         // Also limit redo stack to prevent unbounded growth
-        while self.redo_stack.len() > self.max_history {
-            self.redo_stack.remove(0);
+        if self.redo_stack.len() > self.max_history {
+            let excess = self.redo_stack.len() - self.max_history;
+            self.redo_stack.drain(0..excess);
         }
     }
 }
