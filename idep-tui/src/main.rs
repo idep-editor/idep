@@ -23,6 +23,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+mod highlight;
+use highlight::{highlight_to_style, Highlighter};
+
 /// Guard to ensure terminal is restored even on panic or early exit.
 struct TerminalGuard;
 
@@ -69,6 +72,7 @@ struct App {
     command_buffer: String,
     should_quit: bool,
     status_message: Option<String>,
+    highlighter: Option<Highlighter>,
 }
 
 impl App {
@@ -84,11 +88,13 @@ impl App {
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
+            highlighter: None,
         }
     }
 
     fn from_file(path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&path)?;
+        let highlighter = Highlighter::new(&path).ok();
         Ok(Self {
             buffer: Buffer::with_text(&content),
             mode: Mode::Normal,
@@ -100,6 +106,7 @@ impl App {
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
+            highlighter,
         })
     }
 
@@ -548,6 +555,62 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
     Ok(())
 }
 
+/// Get highlight spans for visible lines, organized by line index.
+/// Returns spans with char offsets (not byte offsets) for direct use with string slicing.
+fn get_highlight_spans(
+    app: &App,
+    visible_lines: &[String],
+) -> std::collections::HashMap<usize, Vec<highlight::HighlightedSpan>> {
+    use std::collections::HashMap;
+
+    let mut result: HashMap<usize, Vec<highlight::HighlightedSpan>> = HashMap::new();
+
+    if let Some(ref highlighter) = app.highlighter {
+        if !highlighter.has_highlighting() {
+            return result;
+        }
+
+        // Build full source from visible lines to get byte offsets correct
+        let source = visible_lines.join("\n");
+        let all_spans = highlighter.highlight(&source);
+
+        // Distribute spans to their respective lines, converting byte offsets to char offsets
+        let mut byte_offset = 0;
+        for (line_idx, line) in visible_lines.iter().enumerate() {
+            let line_start = byte_offset;
+            let line_end = byte_offset + line.len();
+
+            for span in &all_spans {
+                // Check if span intersects with this line
+                if span.end >= line_start && span.start < line_end {
+                    // Clamp span to line bounds (in byte offsets)
+                    let clamped_start_byte = span.start.max(line_start) - line_start;
+                    let clamped_end_byte = span.end.min(line_end) - line_start;
+
+                    if clamped_start_byte < clamped_end_byte {
+                        // Convert byte offsets to char offsets for correct string slicing
+                        let clamped_start_char = line[..clamped_start_byte].chars().count();
+                        let clamped_end_char = line[..clamped_end_byte].chars().count();
+
+                        result
+                            .entry(line_idx)
+                            .or_default()
+                            .push(highlight::HighlightedSpan::new(
+                                clamped_start_char,
+                                clamped_end_char,
+                                span.highlight.clone(),
+                            ));
+                    }
+                }
+            }
+
+            byte_offset = line_end + 1; // +1 for newline
+        }
+    }
+
+    result
+}
+
 fn render(app: &App, frame: &mut Frame) {
     let size = frame.size();
     let line_num_width = app.line_number_width();
@@ -598,47 +661,261 @@ fn render(app: &App, frame: &mut Frame) {
         })
         .collect();
 
+    // Get highlight spans for the visible content
+    let highlight_spans = get_highlight_spans(app, &visible_lines);
+
     let text_content: Vec<Line> = visible_lines
         .iter()
         .enumerate()
         .map(|(i, line)| {
             let line_idx = app.scroll_offset + i;
             let cursor = app.cursor();
-            if line_idx == cursor.line {
-                let mut spans = vec![];
-                let before: String = line.chars().take(cursor.column).collect();
-                let at_cursor: String = line
-                    .chars()
-                    .skip(cursor.column)
-                    .take(1)
-                    .collect::<String>()
-                    .replace('\0', " ");
-                let after: String = line.chars().skip(cursor.column + 1).collect();
 
-                if !before.is_empty() {
-                    spans.push(Span::raw(before));
+            // Build highlighted spans for this line
+            let mut spans = vec![];
+            let line_spans = highlight_spans.get(&i).cloned().unwrap_or_default();
+
+            if line_idx == cursor.line {
+                // Cursor line: apply highlighting then insert cursor
+                let before_col = cursor.column.min(line.chars().count());
+                let mut char_idx = 0;
+                let _byte_idx = 0;
+
+                for span in line_spans {
+                    let span_start_char = line[..span.start].chars().count();
+                    let span_end_char = line[..span.end].chars().count();
+
+                    // Add text before this span
+                    if span_start_char > char_idx && span_start_char <= before_col {
+                        let text: String = line
+                            .chars()
+                            .skip(char_idx)
+                            .take(span_start_char - char_idx)
+                            .collect();
+                        if !text.is_empty() {
+                            spans.push(Span::raw(text));
+                        }
+                    }
+
+                    // Check if cursor is in this span
+                    if before_col >= span_start_char && before_col < span_end_char {
+                        // Split span around cursor
+                        let before_cursor: String = line
+                            .chars()
+                            .skip(span_start_char)
+                            .take(before_col - span_start_char)
+                            .collect();
+                        let at_cursor = line
+                            .chars()
+                            .nth(before_col)
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| " ".to_string());
+                        let after_cursor: String = line
+                            .chars()
+                            .skip(before_col + 1)
+                            .take(span_end_char - before_col - 1)
+                            .collect();
+
+                        if !before_cursor.is_empty() {
+                            spans.push(Span::styled(
+                                before_cursor,
+                                highlight_to_style(&span.highlight),
+                            ));
+                        }
+                        spans.push(Span::styled(
+                            at_cursor,
+                            Style::default()
+                                .bg(Color::White)
+                                .fg(Color::Black)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                        if !after_cursor.is_empty() {
+                            spans.push(Span::styled(
+                                after_cursor,
+                                highlight_to_style(&span.highlight),
+                            ));
+                        }
+                    } else if span_end_char <= before_col {
+                        // Span is entirely before cursor
+                        let text: String = line
+                            .chars()
+                            .skip(span_start_char)
+                            .take(span_end_char - span_start_char)
+                            .collect();
+                        if !text.is_empty() {
+                            spans.push(Span::styled(text, highlight_to_style(&span.highlight)));
+                        }
+                    } else if span_start_char > before_col {
+                        // Span is entirely after cursor - need to render cursor first if not already done
+                        // Add text from char_idx to cursor position
+                        if char_idx < before_col {
+                            let before_cursor_text: String = line
+                                .chars()
+                                .skip(char_idx)
+                                .take(before_col - char_idx)
+                                .collect();
+                            if !before_cursor_text.is_empty() {
+                                spans.push(Span::raw(before_cursor_text));
+                            }
+                        }
+                        // Add cursor character
+                        let at_cursor = line
+                            .chars()
+                            .nth(before_col)
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| " ".to_string());
+                        spans.push(Span::styled(
+                            at_cursor,
+                            Style::default()
+                                .bg(Color::White)
+                                .fg(Color::Black)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                        // Add text from cursor+1 to span start
+                        if before_col + 1 < span_start_char {
+                            let after_cursor_text: String = line
+                                .chars()
+                                .skip(before_col + 1)
+                                .take(span_start_char - before_col - 1)
+                                .collect();
+                            if !after_cursor_text.is_empty() {
+                                spans.push(Span::raw(after_cursor_text));
+                            }
+                        }
+                        // Now add the span itself
+                        let text: String = line
+                            .chars()
+                            .skip(span_start_char)
+                            .take(span_end_char - span_start_char)
+                            .collect();
+                        if !text.is_empty() {
+                            spans.push(Span::styled(text, highlight_to_style(&span.highlight)));
+                        }
+                        // Mark cursor as handled by setting char_idx past it
+                        char_idx = span_end_char.max(before_col + 1);
+                    }
+
+                    char_idx = span_end_char.max(char_idx);
                 }
 
-                let cursor_char = if at_cursor.is_empty() {
-                    " ".to_string()
-                } else {
-                    at_cursor
-                };
-                spans.push(Span::styled(
-                    cursor_char,
-                    Style::default()
-                        .bg(Color::White)
-                        .fg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                ));
+                // Add any remaining text after last span, and render cursor if needed
+                if char_idx <= before_col && before_col < line.chars().count() {
+                    // Need to render cursor in the remaining text
+                    if char_idx < before_col {
+                        let before_cursor: String = line
+                            .chars()
+                            .skip(char_idx)
+                            .take(before_col - char_idx)
+                            .collect();
+                        if !before_cursor.is_empty() {
+                            spans.push(Span::raw(before_cursor));
+                        }
+                    }
+                    let at_cursor = line
+                        .chars()
+                        .nth(before_col)
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| " ".to_string());
+                    spans.push(Span::styled(
+                        at_cursor,
+                        Style::default()
+                            .bg(Color::White)
+                            .fg(Color::Black)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                    if before_col + 1 < line.chars().count() {
+                        let after_cursor: String = line.chars().skip(before_col + 1).collect();
+                        if !after_cursor.is_empty() {
+                            spans.push(Span::raw(after_cursor));
+                        }
+                    }
+                } else if char_idx < line.chars().count() {
+                    // No cursor to render, just remaining text
+                    let remaining: String = line.chars().skip(char_idx).collect();
+                    if !remaining.is_empty() {
+                        spans.push(Span::raw(remaining));
+                    }
+                }
 
-                if !after.is_empty() {
-                    spans.push(Span::raw(after));
+                // If no spans at all, use simple cursor rendering
+                if spans.is_empty() {
+                    let before: String = line.chars().take(cursor.column).collect();
+                    let at_cursor: String = line
+                        .chars()
+                        .skip(cursor.column)
+                        .take(1)
+                        .collect::<String>()
+                        .replace('\0', " ");
+                    let after: String = line.chars().skip(cursor.column + 1).collect();
+
+                    if !before.is_empty() {
+                        spans.push(Span::raw(before));
+                    }
+
+                    let cursor_char = if at_cursor.is_empty() {
+                        " ".to_string()
+                    } else {
+                        at_cursor
+                    };
+                    spans.push(Span::styled(
+                        cursor_char,
+                        Style::default()
+                            .bg(Color::White)
+                            .fg(Color::Black)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+
+                    if !after.is_empty() {
+                        spans.push(Span::raw(after));
+                    }
                 }
 
                 Line::from(spans)
             } else {
-                Line::raw(line.clone())
+                // Non-cursor line: apply highlighting only
+                if line_spans.is_empty() {
+                    Line::raw(line.clone())
+                } else {
+                    let mut styled_spans = vec![];
+                    let mut last_end = 0;
+
+                    for span in line_spans {
+                        // Add gap between spans
+                        if span.start > last_end {
+                            let gap: String = line
+                                .chars()
+                                .skip(last_end)
+                                .take(span.start - last_end)
+                                .collect();
+                            if !gap.is_empty() {
+                                styled_spans.push(Span::raw(gap));
+                            }
+                        }
+
+                        // Add highlighted span
+                        let text: String = line
+                            .chars()
+                            .skip(span.start)
+                            .take(span.end - span.start)
+                            .collect();
+                        if !text.is_empty() {
+                            styled_spans
+                                .push(Span::styled(text, highlight_to_style(&span.highlight)));
+                        }
+
+                        last_end = span.end;
+                    }
+
+                    // Add remaining text
+                    if last_end < line.chars().count() {
+                        let remaining: String = line.chars().skip(last_end).collect();
+                        if !remaining.is_empty() {
+                            styled_spans.push(Span::raw(remaining));
+                        }
+                    }
+
+                    Line::from(styled_spans)
+                }
             }
         })
         .collect();

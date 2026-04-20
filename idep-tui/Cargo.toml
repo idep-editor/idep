@@ -23,3 +23,11 @@ tracing.workspace   = true
 ratatui.workspace = true
 crossterm.workspace = true
 signal-hook = "0.3"
+
+# Syntax highlighting
+tree-sitter.workspace = true
+tree-sitter-rust       = "0.20"
+tree-sitter-typescript = "0.20"
+tree-sitter-python     = "0.20"
+tree-sitter-toml       = "0.20"
+tree-sitter-md         = "0.1"

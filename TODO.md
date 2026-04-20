@@ -408,17 +408,17 @@
 
 ---
 
-### 🔴 v0.1.1 — Syntax Highlighting in TUI
+### � v0.1.1 — Syntax Highlighting in TUI
 > **Gate:** Rust file opens with correct token-level highlighting
 
-- [ ] Wire `tree-sitter` highlight queries into TUI renderer
-- [ ] `Highlighter` struct: takes buffer text + language, returns `Vec<HighlightedSpan>`
-- [ ] `HighlightedSpan`: byte range + highlight name (e.g. `keyword`, `string`, `comment`)
-- [ ] Color mapping: highlight name → `ratatui` `Style`
-- [ ] Default theme: dark background, readable contrast
-- [ ] Supported languages: Rust, TypeScript, Python, TOML, Markdown
-- [ ] Graceful fallback: unknown language → no highlighting, no crash
-- [ ] Unit test: Rust snippet produces expected highlight spans
+- [x] Wire `tree-sitter` highlight queries into TUI renderer
+- [x] `Highlighter` struct: takes buffer text + language, returns `Vec<HighlightedSpan>`
+- [x] `HighlightedSpan`: byte range + highlight name (e.g. `keyword`, `string`, `comment`)
+- [x] Color mapping: highlight name → `ratatui` `Style`
+- [x] Default theme: dark background, readable contrast
+- [x] Supported languages: Rust, TypeScript, Python, TOML, Markdown
+- [x] Graceful fallback: unknown language → no highlighting, no crash
+- [x] Unit test: Rust snippet produces expected highlight spans
 - [ ] Performance: no perceptible lag on files up to 10k lines
 
 ---

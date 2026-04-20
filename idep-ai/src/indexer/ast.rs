@@ -30,7 +30,7 @@ impl AstChunker {
         let language = language_for(lang)?;
 
         let mut parser = Parser::new();
-        parser.set_language(&language)?;
+        parser.set_language(language)?;
         let tree = parser
             .parse(source, None)
             .ok_or_else(|| anyhow!("Failed to parse source"))?;
@@ -66,7 +66,7 @@ impl AstChunker {
 fn language_for(lang: Lang) -> Result<Language> {
     match lang {
         Lang::Rust => Ok(tree_sitter_rust::language()),
-        Lang::TypeScript => Ok(tree_sitter_typescript::language_tsx()),
+        Lang::TypeScript => Ok(tree_sitter_typescript::language_typescript()),
         Lang::Python => Ok(tree_sitter_python::language()),
     }
 }

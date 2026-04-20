@@ -43,7 +43,7 @@ lsp-types    = "0.95"
 jsonrpc-core = "18"
 
 # Tree-sitter
-tree-sitter  = "0.22"
+tree-sitter  = "0.20"
 
 # Config
 toml         = "0.8"
