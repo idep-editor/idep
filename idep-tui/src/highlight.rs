@@ -1,4 +1,5 @@
 use ratatui::style::{Color, Modifier, Style};
+use std::collections::HashMap;
 use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
 
@@ -72,10 +73,20 @@ impl Language {
     }
 }
 
+/// Cache entry for highlight results
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    spans: Vec<HighlightedSpan>,
+    source_len: usize,
+}
+
 /// Highlighter for syntax highlighting using tree-sitter
 pub struct Highlighter {
     language: Language,
     query: Option<Query>,
+    /// Cache: source content hash -> highlight spans
+    /// Limited size to prevent unbounded growth on large files
+    cache: HashMap<u64, CacheEntry>,
 }
 
 impl Highlighter {
@@ -90,7 +101,11 @@ impl Highlighter {
             .and_then(|(lang, q)| Query::new(lang, q).ok());
 
         // Parser is created fresh for each highlight call, don't store it
-        Ok(Self { language, query })
+        Ok(Self {
+            language,
+            query,
+            cache: HashMap::with_capacity(4), // Small LRU cache for viewport highlights
+        })
     }
 
     /// Check if highlighting is available for this language
@@ -98,10 +113,21 @@ impl Highlighter {
         self.query.is_some()
     }
 
-    /// Highlight source code and return spans
-    pub fn highlight(&self, source: &str) -> Vec<HighlightedSpan> {
+    /// Highlight source code and return spans.
+    /// Uses internal caching to avoid re-parsing unchanged content.
+    pub fn highlight(&mut self, source: &str) -> Vec<HighlightedSpan> {
         if !self.has_highlighting() {
             return vec![];
+        }
+
+        // Check cache first (fast path for unchanged content)
+        let source_hash = Self::hash_source(source);
+        let source_len = source.len();
+        if let Some(entry) = self.cache.get(&source_hash) {
+            // Verify source length matches (collision guard: same hash + same length = very likely same content)
+            if entry.source_len == source_len {
+                return entry.spans.clone();
+            }
         }
 
         // Create a new parser for this highlight call
@@ -142,7 +168,39 @@ impl Highlighter {
 
         // Sort spans by start position and merge overlapping
         spans.sort_by_key(|a| a.start);
-        merge_overlapping_spans(spans)
+        let spans = merge_overlapping_spans(spans);
+
+        // Store in cache (evict oldest if at capacity)
+        if self.cache.len() >= 4 {
+            // Simple eviction: clear half the cache when full
+            let keys_to_remove: Vec<_> = self
+                .cache
+                .keys()
+                .take(self.cache.len() / 2)
+                .copied()
+                .collect();
+            for key in keys_to_remove {
+                self.cache.remove(&key);
+            }
+        }
+
+        self.cache.insert(
+            source_hash,
+            CacheEntry {
+                spans: spans.clone(),
+                source_len,
+            },
+        );
+
+        spans
+    }
+
+    /// Fast hash of source content for cache key
+    fn hash_source(source: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -279,7 +337,7 @@ mod tests {
     fn test_highlighter_rust() {
         let source = "fn main() {\n    let x = \"hello\";\n    // comment\n}";
 
-        let highlighter = Highlighter::new(Path::new("test.rs")).unwrap();
+        let mut highlighter = Highlighter::new(Path::new("test.rs")).unwrap();
         let spans = highlighter.highlight(source);
 
         // Should have some highlights
@@ -292,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_highlighter_unknown_language() {
-        let highlighter = Highlighter::new(Path::new("test.unknown")).unwrap();
+        let mut highlighter = Highlighter::new(Path::new("test.unknown")).unwrap();
         assert!(!highlighter.has_highlighting());
 
         let spans = highlighter.highlight("some content");

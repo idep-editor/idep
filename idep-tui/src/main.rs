@@ -403,7 +403,7 @@ fn main() -> Result<()> {
             last_viewport_height = viewport_height;
         }
 
-        terminal.draw(|f| render(&app, f))?;
+        terminal.draw(|f| render(&mut app, f))?;
 
         if event::poll(std::time::Duration::from_millis(16))? {
             match event::read()? {
@@ -558,14 +558,14 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
 /// Get highlight spans for visible lines, organized by line index.
 /// Returns spans with char offsets (not byte offsets) for direct use with string slicing.
 fn get_highlight_spans(
-    app: &App,
+    app: &mut App,
     visible_lines: &[String],
 ) -> std::collections::HashMap<usize, Vec<highlight::HighlightedSpan>> {
     use std::collections::HashMap;
 
     let mut result: HashMap<usize, Vec<highlight::HighlightedSpan>> = HashMap::new();
 
-    if let Some(ref highlighter) = app.highlighter {
+    if let Some(ref mut highlighter) = app.highlighter {
         if !highlighter.has_highlighting() {
             return result;
         }
@@ -611,7 +611,7 @@ fn get_highlight_spans(
     result
 }
 
-fn render(app: &App, frame: &mut Frame) {
+fn render(app: &mut App, frame: &mut Frame) {
     let size = frame.size();
     let line_num_width = app.line_number_width();
 
@@ -679,11 +679,12 @@ fn render(app: &App, frame: &mut Frame) {
                 // Cursor line: apply highlighting then insert cursor
                 let before_col = cursor.column.min(line.chars().count());
                 let mut char_idx = 0;
-                let _byte_idx = 0;
+                let mut cursor_rendered = false;
 
                 for span in line_spans {
-                    let span_start_char = line[..span.start].chars().count();
-                    let span_end_char = line[..span.end].chars().count();
+                    // span.start and span.end are already char offsets from get_highlight_spans
+                    let span_start_char = span.start;
+                    let span_end_char = span.end;
 
                     // Add text before this span
                     if span_start_char > char_idx && span_start_char <= before_col {
@@ -729,6 +730,7 @@ fn render(app: &App, frame: &mut Frame) {
                                 .fg(Color::Black)
                                 .add_modifier(Modifier::BOLD),
                         ));
+                        cursor_rendered = true;
                         if !after_cursor.is_empty() {
                             spans.push(Span::styled(
                                 after_cursor,
@@ -771,6 +773,7 @@ fn render(app: &App, frame: &mut Frame) {
                                 .fg(Color::Black)
                                 .add_modifier(Modifier::BOLD),
                         ));
+                        cursor_rendered = true;
                         // Add text from cursor+1 to span start
                         if before_col + 1 < span_start_char {
                             let after_cursor_text: String = line
@@ -798,8 +801,8 @@ fn render(app: &App, frame: &mut Frame) {
                     char_idx = span_end_char.max(char_idx);
                 }
 
-                // Add any remaining text after last span, and render cursor if needed
-                if char_idx <= before_col && before_col < line.chars().count() {
+                // Add any remaining text after last span, and render cursor if not already rendered
+                if !cursor_rendered && before_col < line.chars().count() {
                     // Need to render cursor in the remaining text
                     if char_idx < before_col {
                         let before_cursor: String = line
@@ -837,8 +840,8 @@ fn render(app: &App, frame: &mut Frame) {
                     }
                 }
 
-                // If no spans at all, use simple cursor rendering
-                if spans.is_empty() {
+                // If no spans at all or cursor not rendered, use simple cursor rendering
+                if spans.is_empty() || !cursor_rendered {
                     let before: String = line.chars().take(cursor.column).collect();
                     let at_cursor: String = line
                         .chars()

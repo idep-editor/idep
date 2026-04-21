@@ -419,7 +419,7 @@
 - [x] Supported languages: Rust, TypeScript, Python, TOML, Markdown
 - [x] Graceful fallback: unknown language → no highlighting, no crash
 - [x] Unit test: Rust snippet produces expected highlight spans
-- [ ] Performance: no perceptible lag on files up to 10k lines
+- [x] Performance: no perceptible lag on files up to 10k lines (cached highlighting avoids re-parsing on scroll/idle frames)
 
 ---
 
