@@ -1,0 +1,220 @@
+# TODO.md — Surgical Patches
+
+> Apply these to `TODO.md`. Each patch is an exact `OLD` → `NEW` string
+> replacement. `OLD` strings are unique in the file (verified by grep before
+> writing). Every other line in `TODO.md` stays verbatim.
+>
+> To apply manually: locate `OLD`, replace with `NEW`.
+> To apply with `sed`: each patch can be rewritten as a `sed -i` command;
+> preferred approach is review-then-edit in your editor, not scripted.
+>
+> **Reason for each patch is stated.** If any reason does not survive your
+> own review, skip that patch.
+
+---
+
+## Patch 1 — v0.1.2 gate: warm vs cold LSP latency
+
+**Reason:** Cold-start `rust-analyzer` on a real project commonly takes 3–5
+seconds before first diagnostic response. A single 2-second gate is either
+unreachable on cold start or tests only the warm path and silently passes.
+Split into warm and cold bands; both are measured.
+
+**Location:** Phase 0.1.x, `v0.1.2 — LSP Diagnostics in TUI` gate line.
+
+### OLD
+
+```
+### 🔴 v0.1.2 — LSP Diagnostics in TUI
+> **Gate:** Save a Rust file with an error; diagnostic appears in status bar within 2 seconds
+```
+
+### NEW
+
+```
+### 🔴 v0.1.2 — LSP Diagnostics in TUI
+> **Gate:** Save a Rust file with an error; diagnostic appears in status bar within 2 seconds when LSP is warm; within 10 seconds on cold start. Both bands measured and logged.
+```
+
+---
+
+## Patch 2 — v0.3.0 plugin API: ship as experimental, defer freeze
+
+**Reason:** Freezing the plugin API before any real plugins have used it
+risks a v2 rewrite after launch, which fragments the ecosystem. Ship v1 as
+**experimental** at v0.3.0, freeze at v0.3.4 after the Rust SDK example
+plugins and the TypeScript SDK have exercised it. WASM ABI is an
+unforgiving contract; one more cycle of real use is cheap insurance.
+
+**Location:** Phase 0.3.x, `v0.3.0 — Plugin API Surface v1` — gate line and
+stability contract bullets.
+
+### Patch 2a — gate line
+
+#### OLD
+
+```
+### 🔴 v0.3.0 — Plugin API Surface v1
+> **Gate:** API surface reviewed, documented, and frozen — no breaking changes after this point
+```
+
+#### NEW
+
+```
+### 🔴 v0.3.0 — Plugin API Surface v1 (experimental)
+> **Gate:** API surface reviewed, documented, and published as experimental. Breaking changes allowed through v0.3.3; freeze targeted at v0.3.4 after SDK and example plugins exercise the API in practice.
+```
+
+### Patch 2b — stability contract bullets
+
+#### OLD
+
+```
+#### Stability contract
+- [ ] ABI stability review: all types verified safe across WASM boundary
+- [ ] `#[deprecated]` path documented: how to signal future deprecation without breaking
+- [ ] Semantic versioning policy written: what constitutes a breaking change
+- [ ] Write `docs/plugin-api-v1.md`: full reference with every type and method
+- [ ] Tag commit as `plugin-api-v1-frozen`
+- [ ] CI check: any change to `idep-plugin/src/api.rs` after this tag requires explicit override
+```
+
+#### NEW
+
+```
+#### Stability contract (v0.3.0 — experimental baseline)
+- [ ] ABI stability review: all types verified safe across WASM boundary
+- [ ] `#[deprecated]` path documented: how to signal future deprecation without breaking
+- [ ] Semantic versioning policy written: what constitutes a breaking change
+- [ ] Write `docs/plugin-api-v1.md`: full reference with every type and method. Mark each item with stability level: `experimental | stable-candidate`.
+- [ ] Tag commit as `plugin-api-v1-experimental`
+- [ ] Policy: breaking changes to `idep-plugin/src/api.rs` allowed through v0.3.3, recorded in `CHANGELOG.md` under a dedicated `Plugin API` section.
+- [ ] Final freeze deferred to v0.3.4 (see that milestone).
+```
+
+### Patch 2c — add a freeze-gate step at end of v0.3.4
+
+**Location:** End of the `v0.3.4 — Plugin Authoring Docs + Discovery` section,
+appended as a new subsection. Do not replace existing content.
+
+#### INSERT (append at end of v0.3.4 section, before the horizontal rule)
+
+```
+#### Plugin API v1 freeze (promoted from v0.3.0)
+
+- [ ] Review every breaking change made to `idep-plugin/src/api.rs` between v0.3.0 and v0.3.3
+- [ ] For each breaking change: confirm it was driven by real SDK or example plugin feedback, not speculation
+- [ ] Re-run ABI stability review against final API surface
+- [ ] Update `docs/plugin-api-v1.md`: remove `experimental` markers, promote all items to `stable`
+- [ ] Tag commit as `plugin-api-v1-frozen`
+- [ ] CI check: any change to `idep-plugin/src/api.rs` after this tag requires an explicit override with maintainer sign-off and a migration note in `CHANGELOG.md`
+- [ ] Announce freeze in `#announcements` Discord channel and in release notes
+```
+
+---
+
+## Patch 3 — v0.5.1 indexer targets: staged, with physics-respecting milestones
+
+**Reason:** Current v0.0.8 baseline is 72.4 LOC/sec indexing and 568 ms
+similarity query. The original single targets (50k LOC in `<60s`, query
+`<50ms` at 10k chunks) imply roughly 11× improvements at once. These are
+possible with GPU-accelerated embeddings and a proper HNSW index, but
+require a dedicated sprint per milestone, not a single version step. Stage
+the targets so the work is honestly scoped.
+
+**Location:** Phase 0.5.x, `v0.5.1 — Indexer Performance`, the two "Target"
+bullet lines near the end of the section (before the WSL2 filesystem
+subsection).
+
+### OLD
+
+```
+- [ ] Target: full index of 50k LOC in <60s on 4-core machine
+- [ ] Target: query latency <50ms at 10k chunks
+```
+
+### NEW
+
+```
+- [ ] Baseline: re-measure 50k LOC index time on this version's build (v0.0.8 baseline: 72.4 LOC/sec ≈ 11.5 min)
+- [ ] Intermediate target: full index of 50k LOC in <3 min on 4-core machine (target ≈4× improvement, via rayon-parallel chunking + batched embedding)
+- [ ] Stretch target: full index of 50k LOC in <60s (requires GPU-accelerated embeddings or smaller embedding model; may move to v0.5.1.a sub-milestone)
+- [ ] Baseline: re-measure query latency at 10k chunks (v0.0.8 baseline: 568 ms brute-force cosine)
+- [ ] Intermediate target: query latency <200ms at 10k chunks (achievable with SIMD-optimized cosine or batched scoring)
+- [ ] Stretch target: query latency <50ms at 10k chunks (requires HNSW/IVF index via `usearch` proper usage; may move to v0.5.1.b sub-milestone)
+```
+
+---
+
+## Patch 4 — v0.7.1 getting-started gate: warm vs cold scenarios
+
+**Reason:** The 15-minute gate is reachable only if Ollama is already
+installed and the coder model already pulled. A fresh-machine scenario
+includes `ollama pull codellama:13b` (~8 GB), which at typical LMIC
+residential bandwidth (50–100 Mbps, often less) adds 10–30+ minutes just
+for the download. A single gate conflates these and will either be gamed
+(measure warm only) or fail (measure cold). Split them.
+
+**Location:** Phase 0.7.x, `v0.7.1 — Getting Started Guide` gate line.
+
+### OLD
+
+```
+### 🔴 v0.7.1 — Getting Started Guide
+> **Gate:** An unfamiliar developer installs idep and gets first AI completion in under 15 minutes following the guide alone
+```
+
+### NEW
+
+```
+### 🔴 v0.7.1 — Getting Started Guide
+> **Gate (warm scenario):** An unfamiliar developer with Ollama pre-installed and the configured model already pulled gets first AI completion in under 15 minutes following the guide alone.
+> **Gate (cold scenario):** On a fresh machine with no prior Ollama install, the guide explicitly documents expected network-dependent time (model download is the dominant cost), reaches first AI completion end-to-end without requiring any question to a maintainer, and clearly offers a smaller-model alternative (`deepseek-coder:1.3b`) for bandwidth-limited users.
+```
+
+---
+
+## Verification after applying patches
+
+```bash
+# Sanity: file still parses as Markdown
+grep -c '^### ' TODO.md  # count unchanged gates
+
+# Sanity: no stray "frozen" claim at v0.3.0
+grep -n 'plugin-api-v1-frozen' TODO.md
+# Expected: exactly one match, inside the v0.3.4 freeze subsection
+
+# Sanity: all four patch locations changed
+grep -c 'within 2 seconds when LSP is warm' TODO.md     # expect 1
+grep -c 'experimental baseline' TODO.md                  # expect 1
+grep -c 'Intermediate target: full index of 50k LOC' TODO.md  # expect 1
+grep -c 'Gate (warm scenario)' TODO.md                   # expect 1
+```
+
+If any of the four greps return zero, the corresponding patch was not
+applied. If any return more than one, the `OLD` string was not unique and
+something else in the file was also matched — review manually.
+
+---
+
+## Not patched (and why)
+
+The following items were considered and left alone:
+
+- **WSL2 Ollama endpoint hint in v0.4.2** (`http://$(cat /etc/resolv.conf...)`)
+  — this is technically correct for Windows-host Ollama + WSL2 client, and
+  is the kind of LMIC-developer-useful detail the project should keep. The
+  exact `awk` pipeline may fail on some configs, but the fix belongs in the
+  doc implementation, not the TODO line.
+- **v0.8.4 benchmark measurement on 4 GB RAM machine** — this is already
+  well-specified. The announcement paragraph lead-line (`~2GB RAM floor`)
+  will need to be rephrased to match the `<2GB editor RSS (target)`
+  framing adopted in README and PRODUCT; that's a content edit when the
+  announcement is drafted, not a TODO edit now.
+- **v0.6.3 disclosure email** — marked as a decision to be made when the
+  time comes. No change needed now.
+- **Backlog items** — scope and priority are the author's call, not a
+  correctness issue.
+
+*Version: 2026-04-21. Patches authored against TODO.md state reflecting
+v0.1.0.*

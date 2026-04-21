@@ -5,6 +5,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- `PRODUCT.md` — explicit target-user definition, non-goals list, success
+  criteria, and decision filter. Makes the product positioning falsifiable
+  rather than implicit.
+- `ARCHITECTURE.md` — root-level contributor-facing architecture introduction:
+  crate map, dependency rules, dependency graph, five core data flows, and
+  key design decision rationale. Complements (does not replace) the detailed
+  guide scoped at `docs/architecture.md` for v0.7.4.
+
+### Changed
+- `README.md` comparison table: row "Codebase RAG" relabeled to "In-process
+  embeddings RAG" for precision — the ❌ on Zed and Google Antigravity is
+  defensible only under this narrower claim.
+- `README.md` comparison table: Idep "Cloud dependency" cell corrected from
+  "None" to "None required" — truthful given that Anthropic / HuggingFace /
+  OpenAI-compat backends are supported for users who opt in.
+- `README.md` comparison table: Idep "RAM floor" cell revised from
+  "~2GB target" to "<2GB editor RSS (target)" — aligns with v0.5.3 target
+  bounds (`<500 MB` idle, `<2 GB` active) and signals this is editor
+  footprint, not whole-machine RAM.
+- `README.md` Positioning section: added paragraph explicitly naming the
+  three-constraint target user (constrained hardware + unreliable network +
+  code-must-not-leave-machine). Links to `PRODUCT.md`.
+- `README.md` Architecture section: added pointer to `ARCHITECTURE.md`.
+- `README.md` Status table: `idep-ai chat` bumped from v0.0.2 to v0.0.9
+  (v0.0.9 added `send_with_context`, `export`, native Anthropic message
+  format, context window management).
+- `README.md` Status table: new row `idep-ai RAG context engine` (v0.0.9).
+- `README.md` Status table: new row `idep-index embeddings + vector store`
+  (v0.0.8) — previously absent despite being central to the RAG claim.
+
+### Deferred
+- Plugin API v1 freeze gate moved from v0.3.0 to v0.3.4, after SDK and example
+  plugins have exercised the API in practice. v0.3.0 now ships API as
+  **experimental**. See `TODO.md` patches for the exact v0.3.0 and v0.3.4
+  edits. WASM ABI is an unforgiving contract; one more cycle before committing.
+
+### Rescoped
+- `TODO.md` v0.1.2 gate split into warm/cold LSP scenarios — cold-start
+  `rust-analyzer` commonly takes 3–5s on real projects, so a single
+  2-second gate was misleading.
+- `TODO.md` v0.5.1 indexer performance targets split into intermediate
+  (reachable via rayon parallel chunking) and stretch (requires
+  GPU-accelerated embeddings or ANN index) — current v0.0.8 baseline is
+  72.4 LOC/sec and 568 ms query, so the original single target implied an
+  ~11× improvement in one version step. Staged targets reflect physics.
+- `TODO.md` v0.7.1 getting-started gate clarified with warm vs cold scenario
+  — a fresh-machine path that includes `ollama pull codellama:13b` is
+  bandwidth-bound and cannot fit a 15-minute promise in LMIC network
+  conditions.
+
+### Not changed
+- All code, all release tags, all existing CHANGELOG entries, all test results.
+  This release is documentation and roadmap-calibration only.
+
+---
+
 ## [v0.1.0] — 2026-04-17
 
 ### Added

@@ -424,7 +424,7 @@
 ---
 
 ### 🔴 v0.1.2 — LSP Diagnostics in TUI
-> **Gate:** Save a Rust file with an error; diagnostic appears in status bar within 2 seconds
+> **Gate:** Save a Rust file with an error; diagnostic appears in status bar within 2 seconds when LSP is warm; within 10 seconds on cold start. Both bands measured and logged.
 
 - [ ] Connect `idep-lsp` to TUI `App`
 - [ ] Start LSP server on workspace open
@@ -719,8 +719,8 @@
 
 ---
 
-### 🔴 v0.3.0 — Plugin API Surface v1
-> **Gate:** API surface reviewed, documented, and frozen — no breaking changes after this point
+### 🔴 v0.3.0 — Plugin API Surface v1 (experimental)
+> **Gate:** API surface reviewed, documented, and published as experimental. Breaking changes allowed through v0.3.3; freeze targeted at v0.3.4 after SDK and example plugins exercise the API in practice.
 
 #### API trait definition
 - [ ] Define `Plugin` trait in `idep-plugin/src/api.rs`
@@ -748,13 +748,14 @@
 - [ ] `idep_show_notification(msg: &str, level: NotifLevel)` — status bar notification
 - [ ] `idep_read_config(key: &str) -> Option<String>` — read from plugin's own config namespace
 
-#### Stability contract
+#### Stability contract (v0.3.0 — experimental baseline)
 - [ ] ABI stability review: all types verified safe across WASM boundary
 - [ ] `#[deprecated]` path documented: how to signal future deprecation without breaking
 - [ ] Semantic versioning policy written: what constitutes a breaking change
-- [ ] Write `docs/plugin-api-v1.md`: full reference with every type and method
-- [ ] Tag commit as `plugin-api-v1-frozen`
-- [ ] CI check: any change to `idep-plugin/src/api.rs` after this tag requires explicit override
+- [ ] Write `docs/plugin-api-v1.md`: full reference with every type and method. Mark each item with stability level: `experimental | stable-candidate`.
+- [ ] Tag commit as `plugin-api-v1-experimental`
+- [ ] Policy: breaking changes to `idep-plugin/src/api.rs` allowed through v0.3.3, recorded in `CHANGELOG.md` under a dedicated `Plugin API` section.
+- [ ] Final freeze deferred to v0.3.4 (see that milestone).
 
 #### Inter-plugin messaging schema (reserved, not yet implemented)
 - [ ] Reserve `[messaging]` section in `plugin.toml` manifest schema
@@ -886,6 +887,16 @@
 - [ ] Chat panel can answer "what plugins are installed?" and "can any plugin do X?" from indexed context
 - [ ] Unit test: install plugin → query vector store → plugin metadata chunk returned
 - [ ] Unit test: uninstall plugin → query vector store → plugin metadata chunk absent
+
+#### Plugin API v1 freeze (promoted from v0.3.0)
+
+- [ ] Review every breaking change made to `idep-plugin/src/api.rs` between v0.3.0 and v0.3.3
+- [ ] For each breaking change: confirm it was driven by real SDK or example plugin feedback, not speculation
+- [ ] Re-run ABI stability review against final API surface
+- [ ] Update `docs/plugin-api-v1.md`: remove `experimental` markers, promote all items to `stable`
+- [ ] Tag commit as `plugin-api-v1-frozen`
+- [ ] CI check: any change to `idep-plugin/src/api.rs` after this tag requires an explicit override with maintainer sign-off and a migration note in `CHANGELOG.md`
+- [ ] Announce freeze in `#announcements` Discord channel and in release notes
 
 ---
 
@@ -1107,8 +1118,12 @@
 - [ ] Parallel chunking: use `rayon` for multi-core file walking
 - [ ] Parallel embedding: batch size tuned for throughput
 - [ ] Profile: identify top bottleneck, document in `docs/benchmarks.md`
-- [ ] Target: full index of 50k LOC in <60s on 4-core machine
-- [ ] Target: query latency <50ms at 10k chunks
+- [ ] Baseline: re-measure 50k LOC index time on this version's build (v0.0.8 baseline: 72.4 LOC/sec ≈ 11.5 min)
+- [ ] Intermediate target: full index of 50k LOC in <3 min on 4-core machine (target ≈4× improvement, via rayon-parallel chunking + batched embedding)
+- [ ] Stretch target: full index of 50k LOC in <60s (requires GPU-accelerated embeddings or smaller embedding model; may move to v0.5.1.a sub-milestone)
+- [ ] Baseline: re-measure query latency at 10k chunks (v0.0.8 baseline: 568 ms brute-force cosine)
+- [ ] Intermediate target: query latency <200ms at 10k chunks (achievable with SIMD-optimized cosine or batched scoring)
+- [ ] Stretch target: query latency <50ms at 10k chunks (requires HNSW/IVF index via `usearch` proper usage; may move to v0.5.1.b sub-milestone)
 
 #### WSL2 — Indexer filesystem performance
 - [ ] Benchmark: index project on native Linux path (`~/`) under WSL2
@@ -1463,7 +1478,8 @@
 ---
 
 ### 🔴 v0.7.1 — Getting Started Guide
-> **Gate:** An unfamiliar developer installs idep and gets first AI completion in under 15 minutes following the guide alone
+> **Gate (warm scenario):** An unfamiliar developer with Ollama pre-installed and the configured model already pulled gets first AI completion in under 15 minutes following the guide alone.
+> **Gate (cold scenario):** On a fresh machine with no prior Ollama install, the guide explicitly documents expected network-dependent time (model download is the dominant cost), reaches first AI completion end-to-end without requiring any question to a maintainer, and clearly offers a smaller-model alternative (`deepseek-coder:1.3b`) for bandwidth-limited users.
 
 #### Guide structure — `docs/getting-started.md`
 - [ ] Section: Prerequisites

@@ -31,9 +31,9 @@ Think in code. Own your tools.
 | License | Proprietary | GPL-3 / AGPL-3 | Proprietary | **Apache 2.0** |
 | AI paradigm | Inline assist | Inline assist | **Agent orchestration** | **Precise completion + RAG** |
 | AI backends | BYOK (cloud-locked models) | Multi-provider | Gemini-first + Claude/GPT | **Any — no middleman** |
-| Codebase RAG | Local index, cloud inference | ❌ | ❌ | **✅ fully in-process** |
-| Cloud dependency | Moderate | Low | **Hard (Google account)** | **None** |
-| RAM floor | 4–8GB | ~4GB | 16GB recommended | **~2GB target** |
+| In-process embeddings RAG | Local index, cloud inference | ❌ | ❌ | **✅ fully in-process** |
+| Cloud dependency | Moderate | Low | **Hard (Google account)** | **None required** |
+| RAM floor | 4–8GB | ~4GB | 16GB recommended | **<2GB editor RSS (target)** |
 | WSL2 / Linux | Good | Good | Okay | **First-class** |
 | Self-hostable | Enterprise only | Partial | ❌ | **✅ fully** |
 | Open source | ❌ | GPL-3 / AGPL-3 | ❌ | **Apache 2.0** |
@@ -55,6 +55,12 @@ Idep is for developers who want thought-level control, not agent-level delegatio
 Your codebase index runs in-process — not just locally, but never touching a network
 path even for embedding. That's a sharper claim than any other tool in this table.
 
+**Who this is for in practice:** developers on constrained hardware, unreliable
+networks, or in environments where code must not leave the machine. First-class
+WSL2. `<2GB` editor RSS as a target. Ollama as a default backend, not an
+afterthought. See [PRODUCT.md](PRODUCT.md) for the full target-user and non-goals
+statement.
+
 ---
 
 ## Architecture
@@ -71,6 +77,9 @@ idep/
 ├── idep-plugin     — WASM plugin SDK
 └── idep-index      — vector index (fastembed-rs + usearch)
 ```
+
+For contributor-level detail (dependency graph, data flows, design rationale)
+see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -194,10 +203,12 @@ See [example/ollama-smoketest.md](example/ollama-smoketest.md) for detailed step
 |---|---|
 | `idep-ai` backends | ✅ Complete (v0.0.1) |
 | `idep-ai` completion | ✅ Complete (v0.0.2) |
-| `idep-ai` chat | ✅ Complete (v0.0.2) |
+| `idep-ai` chat | ✅ Complete (v0.0.9) |
+| `idep-ai` RAG context engine | ✅ Complete (v0.0.9) |
 | `idep-core` buffer | ✅ Complete (v0.0.2) |
 | `idep-core` workspace | ✅ Complete (v0.0.2) |
 | `idep-lsp` bridge | ✅ Complete (v0.0.2) |
+| `idep-index` embeddings + vector store | ✅ Complete (v0.0.8) |
 | `idep-tui` editor | ✅ Complete (v0.1.0) |
 
 ---
