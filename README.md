@@ -209,7 +209,7 @@ See [example/ollama-smoketest.md](example/ollama-smoketest.md) for detailed step
 | `idep-core` workspace | ✅ Complete (v0.0.2) |
 | `idep-lsp` bridge | ✅ Complete (v0.0.2) |
 | `idep-index` embeddings + vector store | ✅ Complete (v0.0.8) |
-| `idep-tui` editor | ✅ Complete (v0.1.0) |
+| `idep-tui` editor | ✅ Complete (v0.1.1) — syntax highlighting added |
 
 ---
 
