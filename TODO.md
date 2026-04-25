@@ -24,6 +24,18 @@
 
 ---
 
+## Deferred Tasks
+
+> Items shipped in earlier milestones that ship as functional but suboptimal implementations. Each entry names where the work landed, what was deferred, and the target milestone for completion. Keep this section honest — if a deferral here is silently resolved, move it into the relevant version's CHANGELOG entry rather than deleting it.
+
+| ID | Origin | Deferred item | Landed at | Current state | Target |
+|---|---|---|---|---|---|
+| **D-1** | v0.0.8 | ANN vector index (`usearch` HNSW/IVF) | `idep-index/src/vector_store.rs` | Brute-force cosine similarity over JSON-persisted vectors. Correct, but O(n) per query. | [**v0.5.1** stretch target](#-v051--indexer-performance) (query latency <50 ms at 10k chunks) |
+| **D-2** | v0.0.8 | `AstChunker` (v0.0.6) wired into `Indexer::index_project` | Chunker: `idep-ai/src/indexer/ast.rs` · Caller: `idep-index/src/indexer.rs` | Indexer uses naive line chunking. `AstChunker` exists and is unit-tested, but never called from the indexer. | [**v0.5.1** indexer performance work](#-v051--indexer-performance) (better semantic chunks → fewer, more relevant query results) |
+| **D-3** | v0.3.0 | Plugin API v1 freeze | `idep-plugin/src/lib.rs` (API surface) | API ships as **experimental**. Breaking changes allowed through v0.3.3. | [**v0.3.4** Plugin API v1 freeze](#-v034--plugin-authoring-docs--discovery) — freeze after SDK and example plugins exercise the API in practice |
+
+---
+
 ## Phase 0.0.x — Headless Core
 
 > One subsystem per version. No UI. Every layer tested before the next begins.
@@ -138,7 +150,7 @@
 
 ---
 
-### ✅ v0.0.3 — LSP Client Lifecycle (done)
+### ✅ v0.0.3 — LSP Client Lifecycle
 > **Gate:** `initialize` → `initialized` → `shutdown` handshake completes cleanly against `rust-analyzer`
 
 #### `idep-lsp` — Process management
@@ -295,10 +307,10 @@
 ---
 
 ### ✅ v0.0.8 — Vector Index + Query
-> **Gate:** `usearch` index persists to disk, survives restart, `find_similar()` returns correct top-k results
+> **Gate:** Brute-force cosine similarity index persists to disk (JSON), survives restart, `find_similar()` returns correct top-k results. ANN backend (`usearch` HNSW/IVF) deferred — see [Deferred Tasks](#deferred-tasks).
 
 #### `idep-index` — Vector store
-- [x] Add vector search implementation (brute-force cosine similarity)
+- [x] Add vector search implementation (brute-force cosine similarity — ANN deferred, see [**D-1**](#deferred-tasks))
 - [x] `VectorStore` struct: stores embeddings with ID mapping
 - [x] `VectorStore::add(id, embedding)` — validated, state-safe
 - [x] `VectorStore::find_similar(embedding, top_k) -> Vec<ScoredChunk>` — cosine similarity
@@ -320,7 +332,7 @@
 - [x] `Indexer::index_project(root: &Path)`
   - [x] Walk directory tree (respect `.gitignore` via `ignore` crate)
   - [x] Detect language per file extension
-  - [x] Chunk each file via naive chunking (AST chunking not public)
+  - [x] Chunk each file via naive line chunking (AST chunker wiring deferred, see [**D-2**](#deferred-tasks))
   - [x] Embed chunks via `EmbedPipeline`
   - [x] Store in `VectorStore` + `ChunkStore`
 - [x] `Indexer::reindex_file(path: &Path)` — diff-based, not full re-walk
@@ -367,7 +379,7 @@
 
 ---
 
-### 🔴 v0.1.0 — Basic TUI Editor
+### ✅ v0.1.0 — Basic TUI Editor
 > **Gate:** Open a file, move cursor, insert and delete text, save — all in terminal
 
 #### `idep-tui` crate
@@ -408,7 +420,7 @@
 
 ---
 
-### � v0.1.1 — Syntax Highlighting in TUI
+### ✅ v0.1.1 — Syntax Highlighting in TUI
 > **Gate:** Rust file opens with correct token-level highlighting
 
 - [x] Wire `tree-sitter` highlight queries into TUI renderer
@@ -890,6 +902,8 @@
 
 #### Plugin API v1 freeze (promoted from v0.3.0)
 
+> Resolves [**D-3** (Plugin API v1 freeze)](#deferred-tasks) from the Deferred Tasks section.
+
 - [ ] Review every breaking change made to `idep-plugin/src/api.rs` between v0.3.0 and v0.3.3
 - [ ] For each breaking change: confirm it was driven by real SDK or example plugin feedback, not speculation
 - [ ] Re-run ABI stability review against final API surface
@@ -1111,6 +1125,8 @@
 
 ### 🔴 v0.5.1 — Indexer Performance
 > **Gate:** 50k LOC Rust project indexed in under 60 seconds; query latency under 50ms
+>
+> Resolves [**D-1** (ANN vector index)](#deferred-tasks) and [**D-2** (`AstChunker` wiring)](#deferred-tasks) from the Deferred Tasks section.
 
 - [ ] Benchmark: `Indexer::index_project()` on `idep` repo itself
 - [ ] Benchmark: `Indexer::reindex_file()` on single file change
@@ -1124,6 +1140,10 @@
 - [ ] Baseline: re-measure query latency at 10k chunks (v0.0.8 baseline: 568 ms brute-force cosine)
 - [ ] Intermediate target: query latency <200ms at 10k chunks (achievable with SIMD-optimized cosine or batched scoring)
 - [ ] Stretch target: query latency <50ms at 10k chunks (requires HNSW/IVF index via `usearch` proper usage; may move to v0.5.1.b sub-milestone)
+- [ ] **D-1**: Replace brute-force `VectorStore` in `idep-index/src/vector_store.rs` with `usearch` HNSW backend; preserve `find_similar()` API and JSON persistence fallback
+- [ ] **D-2**: Wire `idep-ai::AstChunker` (`idep-ai/src/indexer/ast.rs`) into `Indexer::index_project` (`idep-index/src/indexer.rs`); fall back to naive line chunking only on unsupported languages
+- [ ] **D-2**: Unit test: indexed Rust file produces semantic chunks (one per `fn`/`struct`/`impl`), not arbitrary line spans
+- [ ] On resolution: move D-1 and D-2 from Deferred Tasks section into the v0.5.1 CHANGELOG entry
 
 #### WSL2 — Indexer filesystem performance
 - [ ] Benchmark: index project on native Linux path (`~/`) under WSL2
