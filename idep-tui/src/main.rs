@@ -25,6 +25,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::runtime::Runtime;
 
 mod highlight;
 use highlight::{highlight_to_style, Highlighter};
@@ -87,6 +88,8 @@ struct App {
     lsp_debounce_timer: Option<Instant>,
     /// LSP server initialization state
     lsp_initialized: bool,
+    /// Shared tokio runtime for LSP operations (created once, reused)
+    lsp_runtime: Option<Runtime>,
 }
 
 impl App {
@@ -109,6 +112,7 @@ impl App {
             diagnostic_panel_visible: false,
             lsp_debounce_timer: None,
             lsp_initialized: false,
+            lsp_runtime: None,
         }
     }
 
@@ -133,6 +137,7 @@ impl App {
             diagnostic_panel_visible: false,
             lsp_debounce_timer: None,
             lsp_initialized: false,
+            lsp_runtime: None,
         })
     }
 
@@ -401,18 +406,22 @@ impl App {
         let uri = lsp_types::Url::from_file_path(path).ok();
         let text = self.buffer.to_string();
         if let Some(uri) = uri {
-            rt.block_on(async {
+            let result = rt.block_on(async {
                 doc_manager
                     .did_open(uri, language_id.to_string(), text)
                     .await
-                    .ok();
             });
+            if let Err(e) = result {
+                self.status_message = Some(format!("LSP didOpen failed: {}", e));
+            }
         }
         self.document_manager = Some(doc_manager);
         self.lsp_initialized = true;
+        self.lsp_runtime = Some(rt);
     }
 
-    /// Send didOpen notification to LSP server
+    /// Send didOpen notification to LSP server.
+    /// Currently unused but reserved for future multi-file support (:e command).
     #[allow(dead_code)]
     fn send_did_open(&mut self) {
         if let Some(ref mut doc_manager) = self.document_manager {
@@ -427,14 +436,15 @@ impl App {
                     _ => "text",
                 };
                 if let Some(uri) = uri {
-                    let rt = tokio::runtime::Runtime::new().ok();
-                    if let Some(rt) = rt {
-                        rt.block_on(async {
+                    if let Some(ref rt) = self.lsp_runtime {
+                        let result = rt.block_on(async {
                             doc_manager
                                 .did_open(uri, language_id.to_string(), text)
                                 .await
-                                .ok();
                         });
+                        if let Err(e) = result {
+                            self.status_message = Some(format!("LSP didOpen failed: {}", e));
+                        }
                     }
                 }
             }
@@ -465,16 +475,18 @@ impl App {
                 let uri = lsp_types::Url::from_file_path(path).ok();
                 if let Some(uri) = uri {
                     let text = self.buffer.to_string();
-                    let rt = tokio::runtime::Runtime::new().ok();
-                    if let Some(rt) = rt {
-                        rt.block_on(async {
+                    if let Some(ref rt) = self.lsp_runtime {
+                        let result = rt.block_on(async {
                             let change = lsp_types::TextDocumentContentChangeEvent {
                                 range: None,
                                 range_length: None,
                                 text,
                             };
-                            doc_manager.did_change(uri, vec![change]).await.ok();
+                            doc_manager.did_change(uri, vec![change]).await
                         });
+                        if let Err(e) = result {
+                            self.status_message = Some(format!("LSP didChange failed: {}", e));
+                        }
                     }
                 }
             }
@@ -483,15 +495,18 @@ impl App {
 
     /// Send didSave notification to LSP server
     fn send_did_save(&mut self) {
+        // Clear any pending debounce timer to avoid redundant didChange after save
+        self.lsp_debounce_timer = None;
+
         if let Some(ref mut doc_manager) = self.document_manager {
             if let Some(ref path) = self.filename {
                 let uri = lsp_types::Url::from_file_path(path).ok();
                 if let Some(uri) = uri {
-                    let rt = tokio::runtime::Runtime::new().ok();
-                    if let Some(rt) = rt {
-                        rt.block_on(async {
-                            doc_manager.did_save(uri).await.ok();
-                        });
+                    if let Some(ref rt) = self.lsp_runtime {
+                        let result = rt.block_on(async { doc_manager.did_save(uri.clone()).await });
+                        if let Err(e) = result {
+                            self.status_message = Some(format!("LSP didSave failed: {}", e));
+                        }
                     }
                 }
             }
