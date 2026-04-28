@@ -441,13 +441,13 @@
 - [x] Connect `idep-lsp` to TUI `App`
 - [x] Start LSP server on workspace open
 - [x] Send `didOpen` for initial file
-- [ ] Send `didChange` on buffer mutation (debounced, 500ms)
+- [x] Send `didChange` on buffer mutation (debounced, 500ms)
 - [x] Send `didSave` on `:w`
 - [x] Receive `publishDiagnostics` → store on `App`
 - [x] Render: error/warning count in status bar
 - [x] Render: inline diagnostic markers at end of affected lines
 - [x] Render: diagnostic detail panel (toggle with configurable key, default `Space+d`)
-- [ ] Integration test: open file with error, verify diagnostic displayed
+- [x] Integration test: open file with error, verify diagnostic displayed
 
 ---
 

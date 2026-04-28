@@ -84,7 +84,6 @@ struct App {
     /// Whether the diagnostic detail panel is visible
     diagnostic_panel_visible: bool,
     /// Timer for debouncing didChange notifications (500ms)
-    #[allow(dead_code)]
     lsp_debounce_timer: Option<Instant>,
     /// LSP server initialization state
     lsp_initialized: bool,
@@ -173,8 +172,7 @@ impl App {
         let pos = self.buffer.cursor_char_index();
         self.buffer.insert(pos, &c.to_string());
         self.modified = true;
-        // Trigger debounced didChange notification (not yet implemented)
-        // self.send_did_change();
+        self.send_did_change();
     }
 
     fn delete_char(&mut self) {
@@ -182,14 +180,14 @@ impl App {
         if pos > 0 {
             self.buffer.delete(pos - 1..pos);
             self.modified = true;
-            // Trigger debounced didChange notification (not yet implemented)
-            // self.send_did_change();
+            self.send_did_change();
         }
     }
 
     fn undo(&mut self) {
         if self.buffer.undo() {
             self.modified = true;
+            self.send_did_change();
             self.status_message = Some("undone".to_string());
         } else {
             self.status_message = Some("nothing to undo".to_string());
@@ -199,6 +197,7 @@ impl App {
     fn redo(&mut self) {
         if self.buffer.redo() {
             self.modified = true;
+            self.send_did_change();
             self.status_message = Some("redone".to_string());
         } else {
             self.status_message = Some("nothing to redo".to_string());
@@ -334,6 +333,7 @@ impl App {
 
         self.buffer.delete(start_pos..end_pos);
         self.modified = true;
+        self.send_did_change();
 
         // Move cursor to start of line (or previous line if this was the last)
         let new_line = line_idx.min(self.buffer.lines().len().saturating_sub(1));
@@ -442,9 +442,43 @@ impl App {
     }
 
     /// Send didChange notification (called on buffer mutation)
-    #[allow(dead_code)]
     fn send_did_change(&mut self) {
         self.lsp_debounce_timer = Some(Instant::now());
+    }
+
+    /// Check if debounce timer expired and send didChange notification
+    fn check_debounce(&mut self) {
+        const DEBOUNCE_MS: u64 = 500;
+
+        if let Some(timer) = self.lsp_debounce_timer {
+            if timer.elapsed().as_millis() >= DEBOUNCE_MS as u128 {
+                self.lsp_debounce_timer = None;
+                self.flush_did_change();
+            }
+        }
+    }
+
+    /// Send the actual didChange notification to LSP server
+    fn flush_did_change(&mut self) {
+        if let Some(ref mut doc_manager) = self.document_manager {
+            if let Some(ref path) = self.filename {
+                let uri = lsp_types::Url::from_file_path(path).ok();
+                if let Some(uri) = uri {
+                    let text = self.buffer.to_string();
+                    let rt = tokio::runtime::Runtime::new().ok();
+                    if let Some(rt) = rt {
+                        rt.block_on(async {
+                            let change = lsp_types::TextDocumentContentChangeEvent {
+                                range: None,
+                                range_length: None,
+                                text,
+                            };
+                            doc_manager.did_change(uri, vec![change]).await.ok();
+                        });
+                    }
+                }
+            }
+        }
     }
 
     /// Send didSave notification to LSP server
@@ -579,8 +613,8 @@ fn main() -> Result<()> {
     setup_signal_handler(running.clone())?;
 
     while !app.should_quit && running.load(Ordering::SeqCst) {
-        // Check debounced LSP didChange notifications (not yet implemented)
-        // app.check_debounce();
+        // Check debounced LSP didChange notifications
+        app.check_debounce();
         // Poll for diagnostics from LSP
         app.poll_diagnostics();
 
