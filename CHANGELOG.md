@@ -15,6 +15,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.2] - 2025-04-28
+
+### Added
+
+- **LSP Diagnostics in TUI** — Full language server protocol integration for error/warning display
+  - Auto-start LSP server on file open (rust-analyzer, typescript-language-server, pylsp)
+  - `didOpen` notification on file load, `didChange` (debounced 500ms) on edit, `didSave` on `:w`
+  - Error/warning count in status bar (e.g., "E:2 W:1")
+  - Inline diagnostic markers (● E / ● W) at end of affected lines
+  - Diagnostic detail panel (toggle with `Space+d`) showing full messages with line numbers
+  - Integration tests for rust-analyzer diagnostics flow
+
+### Changed
+
+- Performance: shared tokio runtime across all LSP operations (eliminates per-call runtime creation)
+- Improved error handling: LSP failures now show status messages instead of failing silently
+
+### Fixed
+
+- Debounce timer now cleared on save to prevent redundant `didChange` after `didSave`
+- Code review issues: runtime reuse, error propagation, stale timer handling
+
+---
+
 ## [0.1.1] - 2025-04-21
 
 ### Added

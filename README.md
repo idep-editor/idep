@@ -10,7 +10,7 @@
 [![Sponsor](https://img.shields.io/github/sponsors/idep-editor)](https://github.com/sponsors/idep-editor)
 
 > ⚠️ **Alpha — no release binary yet.**  
-> v0.1.0: Terminal editor functional. v0.2.0 will add syntax highlighting.  
+> v0.1.2: LSP diagnostics working. v0.1.3 will add inline AI completions.  
 > Follow along or contribute — see [TODO.md](TODO.md) for what's next.
 
 A lightweight, Rust-native AI-powered IDE.  
