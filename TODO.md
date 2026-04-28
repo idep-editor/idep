@@ -438,15 +438,15 @@
 ### 🔴 v0.1.2 — LSP Diagnostics in TUI
 > **Gate:** Save a Rust file with an error; diagnostic appears in status bar within 2 seconds when LSP is warm; within 10 seconds on cold start. Both bands measured and logged.
 
-- [ ] Connect `idep-lsp` to TUI `App`
-- [ ] Start LSP server on workspace open
-- [ ] Send `didOpen` for initial file
+- [x] Connect `idep-lsp` to TUI `App`
+- [x] Start LSP server on workspace open
+- [x] Send `didOpen` for initial file
 - [ ] Send `didChange` on buffer mutation (debounced, 500ms)
-- [ ] Send `didSave` on `:w`
-- [ ] Receive `publishDiagnostics` → store on `App`
-- [ ] Render: error/warning count in status bar
-- [ ] Render: inline diagnostic markers at end of affected lines
-- [ ] Render: diagnostic detail panel (toggle with configurable key, default `Space+d`)
+- [x] Send `didSave` on `:w`
+- [x] Receive `publishDiagnostics` → store on `App`
+- [x] Render: error/warning count in status bar
+- [x] Render: inline diagnostic markers at end of affected lines
+- [x] Render: diagnostic detail panel (toggle with configurable key, default `Space+d`)
 - [ ] Integration test: open file with error, verify diagnostic displayed
 
 ---

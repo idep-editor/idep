@@ -1800,6 +1800,8 @@ dependencies = [
  "anyhow",
  "crossterm",
  "idep-core",
+ "idep-lsp",
+ "lsp-types",
  "ratatui",
  "signal-hook",
  "tokio",

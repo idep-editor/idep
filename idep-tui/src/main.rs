@@ -8,6 +8,8 @@ use crossterm::{
     ExecutableCommand,
 };
 use idep_core::buffer::{Buffer, Cursor};
+use idep_lsp::{client::LspClient, document::DocumentManager};
+use lsp_types::{self, Diagnostic};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Margin},
@@ -22,6 +24,7 @@ use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 mod highlight;
 use highlight::{highlight_to_style, Highlighter};
@@ -69,10 +72,22 @@ struct App {
     modified: bool,
     pending_g: bool,
     pending_d: bool,
+    pending_space: bool,
     command_buffer: String,
     should_quit: bool,
     status_message: Option<String>,
     highlighter: Option<Highlighter>,
+    /// LSP document manager for language server protocol integration
+    document_manager: Option<DocumentManager>,
+    /// Current diagnostics for the active file
+    diagnostics: Vec<Diagnostic>,
+    /// Whether the diagnostic detail panel is visible
+    diagnostic_panel_visible: bool,
+    /// Timer for debouncing didChange notifications (500ms)
+    #[allow(dead_code)]
+    lsp_debounce_timer: Option<Instant>,
+    /// LSP server initialization state
+    lsp_initialized: bool,
 }
 
 impl App {
@@ -85,10 +100,16 @@ impl App {
             modified: false,
             pending_g: false,
             pending_d: false,
+            pending_space: false,
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
             highlighter: None,
+            document_manager: None,
+            diagnostics: Vec::new(),
+            diagnostic_panel_visible: false,
+            lsp_debounce_timer: None,
+            lsp_initialized: false,
         }
     }
 
@@ -103,10 +124,16 @@ impl App {
             modified: false,
             pending_g: false,
             pending_d: false,
+            pending_space: false,
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
             highlighter,
+            document_manager: None,
+            diagnostics: Vec::new(),
+            diagnostic_panel_visible: false,
+            lsp_debounce_timer: None,
+            lsp_initialized: false,
         })
     }
 
@@ -146,6 +173,8 @@ impl App {
         let pos = self.buffer.cursor_char_index();
         self.buffer.insert(pos, &c.to_string());
         self.modified = true;
+        // Trigger debounced didChange notification (not yet implemented)
+        // self.send_did_change();
     }
 
     fn delete_char(&mut self) {
@@ -153,6 +182,8 @@ impl App {
         if pos > 0 {
             self.buffer.delete(pos - 1..pos);
             self.modified = true;
+            // Trigger debounced didChange notification (not yet implemented)
+            // self.send_did_change();
         }
     }
 
@@ -314,10 +345,160 @@ impl App {
             std::fs::write(path, self.buffer.to_string())?;
             self.modified = false;
             self.status_message = Some(format!("saved {}", path.display()));
+            // Send didSave notification if LSP is connected
+            self.send_did_save();
         } else {
             self.status_message = Some("error: no filename".to_string());
         }
         Ok(())
+    }
+
+    /// Attempt to start LSP server based on file extension
+    fn maybe_start_lsp(&mut self) {
+        if self.lsp_initialized {
+            return;
+        }
+        let Some(ref path) = self.filename else {
+            return;
+        };
+        let extension = path.extension().and_then(|e| e.to_str());
+        let language_id = match extension {
+            Some("rs") => "rust",
+            Some("ts") | Some("tsx") => "typescript",
+            Some("js") | Some("jsx") => "javascript",
+            Some("py") => "python",
+            Some("toml") => "toml",
+            Some("md") => "markdown",
+            _ => return, // No LSP for unknown extensions
+        };
+        // Try to spawn appropriate LSP server
+        let (server_cmd, server_args): (&str, &[&str]) = match extension {
+            Some("rs") => ("rust-analyzer", &[]),
+            Some("ts") | Some("tsx") | Some("js") | Some("jsx") => {
+                ("typescript-language-server", &["--stdio"])
+            }
+            Some("py") => ("pylsp", &[]),
+            _ => return,
+        };
+        // Create tokio runtime for async LSP operations
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                self.status_message = Some(format!("LSP runtime failed: {}", e));
+                return;
+            }
+        };
+        // Spawn LSP client in the runtime
+        let client = match rt.block_on(async { LspClient::spawn(server_cmd, server_args) }) {
+            Ok(client) => Arc::new(tokio::sync::Mutex::new(client)),
+            Err(e) => {
+                self.status_message = Some(format!("LSP spawn failed: {}", e));
+                return;
+            }
+        };
+        let mut doc_manager = DocumentManager::new(client);
+        // Send didOpen for the current file
+        let uri = lsp_types::Url::from_file_path(path).ok();
+        let text = self.buffer.to_string();
+        if let Some(uri) = uri {
+            rt.block_on(async {
+                doc_manager
+                    .did_open(uri, language_id.to_string(), text)
+                    .await
+                    .ok();
+            });
+        }
+        self.document_manager = Some(doc_manager);
+        self.lsp_initialized = true;
+    }
+
+    /// Send didOpen notification to LSP server
+    #[allow(dead_code)]
+    fn send_did_open(&mut self) {
+        if let Some(ref mut doc_manager) = self.document_manager {
+            if let Some(ref path) = self.filename {
+                let uri = lsp_types::Url::from_file_path(path).ok();
+                let text = self.buffer.to_string();
+                let language_id = match path.extension().and_then(|e| e.to_str()) {
+                    Some("rs") => "rust",
+                    Some("ts") | Some("tsx") => "typescript",
+                    Some("js") | Some("jsx") => "javascript",
+                    Some("py") => "python",
+                    _ => "text",
+                };
+                if let Some(uri) = uri {
+                    let rt = tokio::runtime::Runtime::new().ok();
+                    if let Some(rt) = rt {
+                        rt.block_on(async {
+                            doc_manager
+                                .did_open(uri, language_id.to_string(), text)
+                                .await
+                                .ok();
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Send didChange notification (called on buffer mutation)
+    #[allow(dead_code)]
+    fn send_did_change(&mut self) {
+        self.lsp_debounce_timer = Some(Instant::now());
+    }
+
+    /// Send didSave notification to LSP server
+    fn send_did_save(&mut self) {
+        if let Some(ref mut doc_manager) = self.document_manager {
+            if let Some(ref path) = self.filename {
+                let uri = lsp_types::Url::from_file_path(path).ok();
+                if let Some(uri) = uri {
+                    let rt = tokio::runtime::Runtime::new().ok();
+                    if let Some(rt) = rt {
+                        rt.block_on(async {
+                            doc_manager.did_save(uri).await.ok();
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn poll_diagnostics(&mut self) {
+        let new_diagnostics = if let Some(ref doc_manager) = self.document_manager {
+            if let Some(ref path) = self.filename {
+                let uri = lsp_types::Url::from_file_path(path).ok();
+                if let Some(uri) = uri {
+                    doc_manager.get_diagnostics(&uri).to_vec()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+        self.diagnostics = new_diagnostics;
+    }
+
+    /// Count errors and warnings for status bar
+    fn diagnostic_counts(&self) -> (usize, usize) {
+        let mut errors = 0;
+        let mut warnings = 0;
+        for diag in &self.diagnostics {
+            match diag.severity {
+                Some(lsp_types::DiagnosticSeverity::ERROR) => errors += 1,
+                Some(lsp_types::DiagnosticSeverity::WARNING) => warnings += 1,
+                _ => {}
+            }
+        }
+        (errors, warnings)
+    }
+
+    /// Toggle diagnostic panel visibility
+    fn toggle_diagnostics(&mut self) {
+        self.diagnostic_panel_visible = !self.diagnostic_panel_visible;
     }
 
     fn update_scroll(&mut self, viewport_height: usize) {
@@ -386,6 +567,9 @@ fn main() -> Result<()> {
         App::new()
     };
 
+    // Start LSP server for the opened file (if supported language)
+    app.maybe_start_lsp();
+
     let mut terminal = setup_terminal()?;
     let _guard = TerminalGuard;
     let mut last_viewport_height: usize = 0;
@@ -395,6 +579,11 @@ fn main() -> Result<()> {
     setup_signal_handler(running.clone())?;
 
     while !app.should_quit && running.load(Ordering::SeqCst) {
+        // Check debounced LSP didChange notifications (not yet implemented)
+        // app.check_debounce();
+        // Poll for diagnostics from LSP
+        app.poll_diagnostics();
+
         // Compute layout to get viewport height for scroll update
         let size = terminal.size()?;
         let viewport_height = size.height.saturating_sub(1) as usize;
@@ -527,16 +716,23 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
                     app.delete_line();
                     app.pending_d = false;
                 }
+                KeyCode::Char('d') if app.pending_space => {
+                    app.toggle_diagnostics();
+                    app.pending_space = false;
+                }
                 KeyCode::Char('d') => app.pending_d = true,
+                KeyCode::Char(' ') => app.pending_space = true,
                 KeyCode::Char('u') => app.undo(),
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => app.redo(),
                 KeyCode::Esc => {
                     app.pending_g = false;
                     app.pending_d = false;
+                    app.pending_space = false;
                 }
                 _ => {
                     app.pending_g = false;
                     app.pending_d = false;
+                    app.pending_space = false;
                 }
             }
         }
@@ -611,17 +807,47 @@ fn get_highlight_spans(
     result
 }
 
+/// Build inline diagnostic marker spans for a given file line index
+fn diagnostic_markers_for_line(app: &App, line_idx: usize) -> Vec<Span<'static>> {
+    let mut markers = vec![];
+    for diag in &app.diagnostics {
+        let start_line = diag.range.start.line as usize;
+        if start_line == line_idx {
+            let (marker, color) = match diag.severity {
+                Some(lsp_types::DiagnosticSeverity::ERROR) => (" ● E", Color::Red),
+                Some(lsp_types::DiagnosticSeverity::WARNING) => (" ● W", Color::Yellow),
+                _ => continue,
+            };
+            markers.push(Span::styled(
+                marker.to_string(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ));
+        }
+    }
+    markers
+}
+
 fn render(app: &mut App, frame: &mut Frame) {
     let size = frame.size();
     let line_num_width = app.line_number_width();
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(size);
-
-    let content_area = chunks[0];
-    let status_area = chunks[1];
+    let (content_area, status_area, diagnostics_area) = if app.diagnostic_panel_visible {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(15),
+                Constraint::Length(1),
+            ])
+            .split(size);
+        (chunks[0], chunks[2], Some(chunks[1]))
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(size);
+        (chunks[0], chunks[1], None)
+    };
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -873,11 +1099,17 @@ fn render(app: &mut App, frame: &mut Frame) {
                     }
                 }
 
+                // Add inline diagnostic markers at end of cursor line
+                let mut marker_spans = diagnostic_markers_for_line(app, line_idx);
+                spans.append(&mut marker_spans);
+
                 Line::from(spans)
             } else {
                 // Non-cursor line: apply highlighting only
                 if line_spans.is_empty() {
-                    Line::raw(line.clone())
+                    let mut spans = vec![Span::raw(line.clone())];
+                    spans.extend(diagnostic_markers_for_line(app, line_idx));
+                    Line::from(spans)
                 } else {
                     let mut styled_spans = vec![];
                     let mut last_end = 0;
@@ -917,6 +1149,8 @@ fn render(app: &mut App, frame: &mut Frame) {
                         }
                     }
 
+                    // Add inline diagnostic markers at end of highlighted line
+                    styled_spans.extend(diagnostic_markers_for_line(app, line_idx));
                     Line::from(styled_spans)
                 }
             }
@@ -960,6 +1194,12 @@ fn render(app: &mut App, frame: &mut Frame) {
         };
         vec![Span::styled(msg.clone(), style)]
     } else {
+        let (errors, warnings) = app.diagnostic_counts();
+        let diag_str = if errors > 0 || warnings > 0 {
+            format!(" | {}E {}W", errors, warnings)
+        } else {
+            String::new()
+        };
         vec![
             Span::styled(
                 format!("{}:{}", cursor.line + 1, cursor.column + 1),
@@ -983,10 +1223,60 @@ fn render(app: &mut App, frame: &mut Frame) {
                 format!("{}{}", filename_str, modified_str),
                 Style::default().fg(Color::White),
             ),
+            Span::styled(
+                diag_str,
+                Style::default().fg(if errors > 0 {
+                    Color::Red
+                } else {
+                    Color::Yellow
+                }),
+            ),
         ]
     };
 
     let status_bar = Paragraph::new(Line::from(status_spans))
         .style(Style::default().bg(Color::DarkGray).fg(Color::White));
     frame.render_widget(status_bar, status_area);
+
+    // Render diagnostic detail panel if visible
+    if let Some(diag_area) = diagnostics_area {
+        let mut diag_lines: Vec<Line> = vec![];
+        if app.diagnostics.is_empty() {
+            diag_lines.push(Line::from(Span::styled(
+                "No diagnostics",
+                Style::default().fg(Color::DarkGray),
+            )));
+        } else {
+            for diag in &app.diagnostics {
+                let severity_text = match diag.severity {
+                    Some(lsp_types::DiagnosticSeverity::ERROR) => "[ERROR]",
+                    Some(lsp_types::DiagnosticSeverity::WARNING) => "[WARN]",
+                    Some(lsp_types::DiagnosticSeverity::INFORMATION) => "[INFO]",
+                    Some(lsp_types::DiagnosticSeverity::HINT) => "[HINT]",
+                    None => "     ",
+                    _ => "[?]  ",
+                };
+                let severity_color = match diag.severity {
+                    Some(lsp_types::DiagnosticSeverity::ERROR) => Color::Red,
+                    Some(lsp_types::DiagnosticSeverity::WARNING) => Color::Yellow,
+                    Some(lsp_types::DiagnosticSeverity::INFORMATION) => Color::Cyan,
+                    Some(lsp_types::DiagnosticSeverity::HINT) => Color::Green,
+                    None => Color::Gray,
+                    _ => Color::Gray,
+                };
+                let line_num = diag.range.start.line + 1;
+                let message = diag.message.split('\n').next().unwrap_or("").to_string();
+                let text = format!("{:6} L{:4} {}", severity_text, line_num, message);
+                diag_lines.push(Line::from(Span::styled(
+                    text,
+                    Style::default().fg(severity_color),
+                )));
+            }
+        }
+
+        let diag_panel = Paragraph::new(diag_lines)
+            .block(Block::default().title("Diagnostics").borders(Borders::ALL))
+            .style(Style::default().bg(Color::Black).fg(Color::White));
+        frame.render_widget(diag_panel, diag_area);
+    }
 }
