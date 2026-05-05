@@ -451,19 +451,19 @@
 
 ---
 
-### 🔴 v0.1.3 — Inline AI Completions in TUI
+### ✅ v0.1.3 — Inline AI Completions in TUI
 > **Gate:** Pause typing in Insert mode; ghost text suggestion appears; `Tab` accepts it
 
-- [ ] Connect `idep-ai` `CompletionEngine` to TUI
-- [ ] Trigger: debounce keypress in Insert mode (configurable, default 400ms)
-- [ ] Fetch completion from configured backend (Ollama for offline default)
-- [ ] Render ghost text: dimmed style, appended after cursor
-- [ ] `Tab` → accept ghost text (insert into buffer)
-- [ ] `Esc` / any other key → dismiss ghost text
-- [ ] Cancel in-flight request if user resumes typing before response arrives
-- [ ] Show spinner in status bar while fetching
-- [ ] Unit test: ghost text rendered at correct position
-- [ ] Integration test: completion fetched and accepted end-to-end
+- [x] Connect `idep-ai` `CompletionEngine` to TUI
+- [x] Trigger: debounce keypress in Insert mode (configurable, default 400ms)
+- [x] Fetch completion from configured backend (Ollama for offline default)
+- [x] Render ghost text: dimmed style, appended after cursor
+- [x] `Tab` → accept ghost text (insert into buffer)
+- [x] `Esc` / any other key → dismiss ghost text
+- [x] Cancel in-flight request if user resumes typing before response arrives
+- [x] Show spinner in status bar while fetching
+- [x] Unit test: ghost text rendered at correct position
+- [x] Integration test: completion fetched and accepted end-to-end
 
 ---
 

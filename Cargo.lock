@@ -1799,6 +1799,7 @@ version = "0.1.2"
 dependencies = [
  "anyhow",
  "crossterm",
+ "idep-ai",
  "idep-core",
  "idep-lsp",
  "lsp-server",

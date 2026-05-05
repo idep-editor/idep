@@ -60,7 +60,7 @@ endpoint = "http://localhost:11434"
 # ─── Completion behaviour ──────────────────────────────────────────────────────
 
 [completion]
-debounce_ms   = 300     # delay before triggering completion after keypress
+debounce_ms   = 400     # delay before triggering completion after keypress
 max_tokens    = 128     # max tokens per inline completion
 stop_at_lines = 10      # don't complete past this many new lines
 

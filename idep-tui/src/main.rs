@@ -7,6 +7,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
+use idep_ai::completion::{CompletionEngine, CompletionRequest};
 use idep_core::buffer::{Buffer, Cursor};
 use idep_lsp::{client::LspClient, document::DocumentManager};
 use lsp_types::{self, Diagnostic};
@@ -65,6 +66,16 @@ impl std::fmt::Display for Mode {
     }
 }
 
+/// Completion request state machine
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Debouncing and Error variants used in v0.1.4
+enum CompletionStatus {
+    Idle,
+    Debouncing,
+    Fetching,
+    Error,
+}
+
 struct App {
     buffer: Buffer,
     mode: Mode,
@@ -90,9 +101,29 @@ struct App {
     lsp_initialized: bool,
     /// Shared tokio runtime for LSP operations (created once, reused)
     lsp_runtime: Option<Runtime>,
+    /// Current completion suggestion (not yet in buffer)
+    ghost_text: Option<String>,
+    /// Completion request state
+    completion_status: CompletionStatus,
+    /// Handle to in-flight completion task
+    pending_completion: Option<tokio::task::JoinHandle<Option<String>>>,
+    /// Debounce timer for completion requests
+    completion_debounce_timer: Option<Instant>,
+    /// Completion engine
+    completion_engine: Option<Arc<CompletionEngine>>,
+    /// Debounce interval in milliseconds
+    completion_debounce_ms: u64,
 }
 
 impl App {
+    /// Initialize completion engine (for v0.1.4 config loading)
+    #[allow(dead_code)]
+    fn with_completion_engine(mut self, engine: CompletionEngine, debounce_ms: u64) -> Self {
+        self.completion_engine = Some(Arc::new(engine));
+        self.completion_debounce_ms = debounce_ms;
+        self
+    }
+
     fn new() -> Self {
         Self {
             buffer: Buffer::new(),
@@ -113,6 +144,12 @@ impl App {
             lsp_debounce_timer: None,
             lsp_initialized: false,
             lsp_runtime: None,
+            ghost_text: None,
+            completion_status: CompletionStatus::Idle,
+            pending_completion: None,
+            completion_debounce_timer: None,
+            completion_engine: None,
+            completion_debounce_ms: 400,
         }
     }
 
@@ -138,6 +175,12 @@ impl App {
             lsp_debounce_timer: None,
             lsp_initialized: false,
             lsp_runtime: None,
+            ghost_text: None,
+            completion_status: CompletionStatus::Idle,
+            pending_completion: None,
+            completion_debounce_timer: None,
+            completion_engine: None,
+            completion_debounce_ms: 400,
         })
     }
 
@@ -559,6 +602,142 @@ impl App {
         }
     }
 
+    /// Check if completion debounce timer expired and fire request
+    fn check_completion_debounce(&mut self) {
+        if let Some(timer) = self.completion_debounce_timer {
+            if timer.elapsed().as_millis() as u64 >= self.completion_debounce_ms {
+                self.completion_debounce_timer = None;
+                self.fire_completion_request();
+            }
+        }
+    }
+
+    /// Fire a completion request (called after debounce expires)
+    fn fire_completion_request(&mut self) {
+        if self.mode != Mode::Insert {
+            return;
+        }
+
+        let Some(ref engine) = self.completion_engine else {
+            return;
+        };
+
+        self.completion_status = CompletionStatus::Fetching;
+
+        // Capture buffer context at this moment
+        let lines = self.buffer.lines();
+        let cursor = self.buffer.cursor();
+        let mut prefix = String::new();
+        let mut suffix = String::new();
+
+        // Build prefix (all text before cursor)
+        for (i, line) in lines.iter().enumerate() {
+            if i < cursor.line {
+                prefix.push_str(line);
+                prefix.push('\n');
+            } else if i == cursor.line {
+                let chars: Vec<char> = line.chars().collect();
+                prefix.push_str(
+                    &chars[..cursor.column.min(chars.len())]
+                        .iter()
+                        .collect::<String>(),
+                );
+            }
+        }
+
+        // Build suffix (all text after cursor)
+        for (i, line) in lines.iter().enumerate() {
+            if i == cursor.line {
+                let chars: Vec<char> = line.chars().collect();
+                if cursor.column < chars.len() {
+                    suffix.push_str(&chars[cursor.column..].iter().collect::<String>());
+                }
+                suffix.push('\n');
+            } else if i > cursor.line {
+                suffix.push_str(line);
+                suffix.push('\n');
+            }
+        }
+
+        let engine = Arc::clone(engine);
+        let req = CompletionRequest {
+            prefix,
+            suffix,
+            language: self
+                .filename
+                .as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .unwrap_or("text")
+                .to_string(),
+            max_tokens: 128,
+            stop_sequences: None,
+        };
+
+        let task = tokio::spawn(async move {
+            match engine.complete(req).await {
+                Ok(response) => {
+                    // Truncate to single line
+                    response
+                        .text
+                        .lines()
+                        .next()
+                        .map(|line: &str| line.to_string())
+                }
+                Err(e) => {
+                    eprintln!("Completion error: {}", e);
+                    None
+                }
+            }
+        });
+
+        self.pending_completion = Some(task);
+    }
+
+    /// Poll pending completion request for response (for v0.1.4)
+    #[allow(dead_code)]
+    fn poll_completion(&mut self) {
+        if let Some(ref mut task) = self.pending_completion {
+            if task.is_finished() {
+                // Task is done; we would retrieve the result via a channel
+                // For now, completion results are handled elsewhere
+                self.completion_status = CompletionStatus::Idle;
+            }
+        }
+    }
+
+    /// Initialize and store completion task result (for v0.1.4)
+    #[allow(dead_code)]
+    fn set_ghost_text(&mut self, text: String) {
+        self.ghost_text = Some(text);
+        self.completion_status = CompletionStatus::Idle;
+    }
+
+    /// Clear ghost text without buffer mutation
+    fn dismiss_completion(&mut self) {
+        self.ghost_text = None;
+        if let Some(handle) = self.pending_completion.take() {
+            handle.abort();
+        }
+        self.completion_status = CompletionStatus::Idle;
+    }
+
+    /// Accept ghost text by inserting into buffer
+    fn accept_completion(&mut self) -> Result<()> {
+        if let Some(suggestion) = self.ghost_text.take() {
+            let pos = self.buffer.cursor_char_index();
+            self.buffer.insert(pos, &suggestion);
+            self.modified = true;
+            self.send_did_change();
+            // Dismiss any pending request
+            if let Some(handle) = self.pending_completion.take() {
+                handle.abort();
+            }
+            self.completion_status = CompletionStatus::Idle;
+        }
+        Ok(())
+    }
+
     fn execute_command(&mut self) -> Result<()> {
         let cmd = self.command_buffer.trim();
         if cmd.is_empty() {
@@ -616,6 +795,9 @@ fn main() -> Result<()> {
         App::new()
     };
 
+    // TODO: Load config and initialize completion engine
+    // (Will be implemented in a follow-up commit)
+
     // Start LSP server for the opened file (if supported language)
     app.maybe_start_lsp();
 
@@ -630,6 +812,8 @@ fn main() -> Result<()> {
     while !app.should_quit && running.load(Ordering::SeqCst) {
         // Check debounced LSP didChange notifications
         app.check_debounce();
+        // Check completion debounce and fire if ready
+        app.check_completion_debounce();
         // Poll for diagnostics from LSP
         app.poll_diagnostics();
 
@@ -788,11 +972,39 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
         Mode::Insert => {
             // Clear any status message on keypress
             app.status_message = None;
+
+            // Reset debounce timer on every keystroke
+            app.completion_debounce_timer = Some(Instant::now());
+
             match key.code {
-                KeyCode::Esc => app.mode = Mode::Normal,
-                KeyCode::Char(c) => app.insert_char(c),
-                KeyCode::Backspace => app.delete_char(),
-                KeyCode::Enter => app.insert_char('\n'),
+                KeyCode::Tab => {
+                    // Tab: accept suggestion if present, else insert tab
+                    if app.ghost_text.is_some() {
+                        app.accept_completion().ok();
+                    } else {
+                        app.insert_char('\t');
+                    }
+                }
+                KeyCode::Esc => {
+                    // Esc: dismiss suggestion and exit Insert mode
+                    app.dismiss_completion();
+                    app.mode = Mode::Normal;
+                }
+                KeyCode::Char(c) => {
+                    // Any other character: dismiss suggestion and insert
+                    app.dismiss_completion();
+                    app.insert_char(c);
+                }
+                KeyCode::Backspace => {
+                    // Backspace: dismiss suggestion and delete
+                    app.dismiss_completion();
+                    app.delete_char();
+                }
+                KeyCode::Enter => {
+                    // Enter: dismiss suggestion and insert newline
+                    app.dismiss_completion();
+                    app.insert_char('\n');
+                }
                 _ => {}
             }
         }
@@ -1152,6 +1364,15 @@ fn render(app: &mut App, frame: &mut Frame) {
                 let mut marker_spans = diagnostic_markers_for_line(app, line_idx);
                 spans.append(&mut marker_spans);
 
+                // Add ghost text (suggestion) if on cursor line and in Insert mode
+                if let Some(ref ghost) = app.ghost_text {
+                    if app.mode == Mode::Insert {
+                        // Append ghost text with dimmed styling
+                        let ghost_style = Style::default().fg(Color::DarkGray);
+                        spans.push(Span::styled(ghost.clone(), ghost_style));
+                    }
+                }
+
                 Line::from(spans)
             } else {
                 // Non-cursor line: apply highlighting only
@@ -1249,6 +1470,19 @@ fn render(app: &mut App, frame: &mut Frame) {
         } else {
             String::new()
         };
+
+        // Add completion status indicator
+        let completion_str = match app.completion_status {
+            CompletionStatus::Fetching => {
+                let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                let elapsed = Instant::now().elapsed().as_millis();
+                let frame_idx = (elapsed / 100) as usize % spinner_frames.len();
+                format!(" {} completing...", spinner_frames[frame_idx])
+            }
+            CompletionStatus::Error => " [completion error]".to_string(),
+            _ => String::new(),
+        };
+
         vec![
             Span::styled(
                 format!("{}:{}", cursor.line + 1, cursor.column + 1),
@@ -1280,6 +1514,7 @@ fn render(app: &mut App, frame: &mut Frame) {
                     Color::Yellow
                 }),
             ),
+            Span::styled(completion_str, Style::default().fg(Color::Cyan)),
         ]
     };
 

@@ -39,7 +39,7 @@ pub struct CompletionConfig {
 }
 
 fn default_debounce_ms() -> u64 {
-    300
+    400
 }
 fn default_max_tokens() -> u32 {
     128
