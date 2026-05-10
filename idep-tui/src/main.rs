@@ -7,8 +7,18 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use idep_ai::completion::{CompletionEngine, CompletionRequest};
-use idep_core::buffer::{Buffer, Cursor};
+use idep_ai::{
+    backends::{
+        anthropic::AnthropicBackend, huggingface::HuggingFaceBackend, ollama::OllamaBackend,
+        openai_compat::OpenAiCompatBackend, Backend,
+    },
+    chat::ChatSession,
+    completion::{CompletionEngine, CompletionRequest, FimTokens},
+};
+use idep_core::{
+    buffer::{Buffer, Cursor},
+    config::{load_config, BackendKind},
+};
 use idep_lsp::{client::LspClient, document::DocumentManager};
 use lsp_types::{self, Diagnostic};
 use ratatui::{
@@ -24,12 +34,13 @@ use signal_hook::flag::register;
 use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
+use tree_sitter::Parser;
 
 mod highlight;
-use highlight::{highlight_to_style, Highlighter};
+use highlight::{highlight_to_style, Highlighter, Language};
 
 /// Guard to ensure terminal is restored even on panic or early exit.
 struct TerminalGuard;
@@ -54,6 +65,7 @@ enum Mode {
     Normal,
     Insert,
     Command,
+    ChatInput,
 }
 
 impl std::fmt::Display for Mode {
@@ -62,6 +74,7 @@ impl std::fmt::Display for Mode {
             Mode::Normal => write!(f, "NORMAL"),
             Mode::Insert => write!(f, "INSERT"),
             Mode::Command => write!(f, "COMMAND"),
+            Mode::ChatInput => write!(f, "CHAT"),
         }
     }
 }
@@ -74,6 +87,12 @@ enum CompletionStatus {
     Debouncing,
     Fetching,
     Error,
+}
+
+#[derive(Debug, Clone)]
+struct ChatEntry {
+    role: String,
+    content: String,
 }
 
 struct App {
@@ -113,10 +132,43 @@ struct App {
     completion_engine: Option<Arc<CompletionEngine>>,
     /// Debounce interval in milliseconds
     completion_debounce_ms: u64,
+    /// Chat panel visibility
+    chat_panel_visible: bool,
+    /// Chat input buffer shown at bottom of chat pane
+    chat_input: String,
+    /// Rendered chat history entries
+    chat_history: Vec<ChatEntry>,
+    /// Scroll offset for chat history
+    chat_scroll: usize,
+    /// Whether chat pane currently has navigation focus
+    chat_focus: bool,
+    /// Streaming in progress flag
+    chat_streaming: bool,
+    /// Last injected context token estimate for header
+    chat_context_tokens: usize,
+    /// Background chat streaming task handle
+    pending_chat: Option<std::thread::JoinHandle<()>>,
+    /// Receiver for streaming tokens
+    chat_rx: Option<mpsc::Receiver<String>>,
+    /// Sender used by chat worker
+    chat_tx: Option<mpsc::Sender<String>>,
+    /// Key used after Space to toggle chat panel (default: c)
+    chat_toggle_key: char,
+    /// Key used after Space to clear chat history (default: x)
+    chat_clear_key: char,
 }
 
 impl App {
     /// Initialize completion engine (for v0.1.4 config loading)
+    #[allow(dead_code)]
+    fn key_from_env(var: &str, default_key: char) -> char {
+        std::env::var(var)
+            .ok()
+            .and_then(|s| s.chars().next())
+            .filter(|c| c.is_ascii_alphanumeric())
+            .unwrap_or(default_key)
+    }
+
     #[allow(dead_code)]
     fn with_completion_engine(mut self, engine: CompletionEngine, debounce_ms: u64) -> Self {
         self.completion_engine = Some(Arc::new(engine));
@@ -125,6 +177,8 @@ impl App {
     }
 
     fn new() -> Self {
+        let chat_toggle_key = Self::key_from_env("IDEP_CHAT_TOGGLE_KEY", 'c');
+        let chat_clear_key = Self::key_from_env("IDEP_CHAT_CLEAR_KEY", 'x');
         Self {
             buffer: Buffer::new(),
             mode: Mode::Normal,
@@ -150,10 +204,24 @@ impl App {
             completion_debounce_timer: None,
             completion_engine: None,
             completion_debounce_ms: 400,
+            chat_panel_visible: false,
+            chat_input: String::new(),
+            chat_history: Vec::new(),
+            chat_scroll: 0,
+            chat_focus: false,
+            chat_streaming: false,
+            chat_context_tokens: 0,
+            pending_chat: None,
+            chat_rx: None,
+            chat_tx: None,
+            chat_toggle_key,
+            chat_clear_key,
         }
     }
 
     fn from_file(path: PathBuf) -> Result<Self> {
+        let chat_toggle_key = Self::key_from_env("IDEP_CHAT_TOGGLE_KEY", 'c');
+        let chat_clear_key = Self::key_from_env("IDEP_CHAT_CLEAR_KEY", 'x');
         let content = std::fs::read_to_string(&path)?;
         let highlighter = Highlighter::new(&path).ok();
         Ok(Self {
@@ -181,6 +249,18 @@ impl App {
             completion_debounce_timer: None,
             completion_engine: None,
             completion_debounce_ms: 400,
+            chat_panel_visible: false,
+            chat_input: String::new(),
+            chat_history: Vec::new(),
+            chat_scroll: 0,
+            chat_focus: false,
+            chat_streaming: false,
+            chat_context_tokens: 0,
+            pending_chat: None,
+            chat_rx: None,
+            chat_tx: None,
+            chat_toggle_key,
+            chat_clear_key,
         })
     }
 
@@ -776,6 +856,282 @@ impl App {
         self.mode = Mode::Normal;
         Ok(())
     }
+
+    fn toggle_chat_panel(&mut self) {
+        self.chat_panel_visible = !self.chat_panel_visible;
+        if self.chat_panel_visible {
+            self.mode = Mode::ChatInput;
+            self.chat_focus = true;
+            self.status_message = Some("chat opened (Enter to send, Esc to exit)".to_string());
+        } else {
+            self.chat_focus = false;
+            if self.mode == Mode::ChatInput {
+                self.mode = Mode::Normal;
+            }
+        }
+    }
+
+    fn clear_chat_history(&mut self) {
+        self.chat_history.clear();
+        self.chat_input.clear();
+        self.chat_scroll = 0;
+        self.chat_focus = false;
+        self.chat_streaming = false;
+        self.chat_context_tokens = 0;
+        self.chat_rx = None;
+        self.chat_tx = None;
+        self.pending_chat = None;
+        self.status_message = Some("chat history cleared".to_string());
+    }
+
+    fn poll_chat_stream(&mut self) {
+        let mut drained = false;
+        let mut done = false;
+        let was_at_bottom = self.chat_scroll >= self.chat_history.len().saturating_sub(1);
+
+        if let Some(rx) = self.chat_rx.as_mut() {
+            while let Ok(token) = rx.try_recv() {
+                drained = true;
+                if token == "__IDEP_CHAT_DONE__" {
+                    done = true;
+                    break;
+                }
+
+                if let Some(last) = self.chat_history.last_mut() {
+                    if last.role == "assistant" {
+                        last.content.push_str(&token);
+                    }
+                }
+            }
+        }
+
+        if done {
+            self.chat_streaming = false;
+            self.chat_rx = None;
+            self.chat_tx = None;
+            self.pending_chat = None;
+        }
+
+        if drained && was_at_bottom {
+            self.chat_scroll = self.chat_history.len().saturating_sub(1);
+        }
+    }
+
+    fn estimate_tokens(text: &str) -> usize {
+        (text.len() / 4).max(1)
+    }
+
+    fn build_chat_context(&self) -> String {
+        let lines = self.buffer.lines();
+        let cursor = self.buffer.cursor();
+        let mut context = String::new();
+
+        let file_name = self
+            .filename
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "[No Name]".to_string());
+
+        context.push_str(&format!("File: {}\n", file_name));
+        context.push_str(&format!(
+            "Cursor: line {}, col {}\n\n",
+            cursor.line + 1,
+            cursor.column + 1
+        ));
+
+        let start = cursor.line.saturating_sub(5);
+        let end = (cursor.line + 5).min(lines.len().saturating_sub(1));
+        context.push_str("## Cursor Nearby Lines\n");
+        for (idx, line) in lines.iter().enumerate().take(end + 1).skip(start) {
+            context.push_str(&format!("{:>4}: {}\n", idx + 1, line));
+        }
+
+        if let Some(ast_chunk) = self.extract_cursor_ast_chunk() {
+            context.push_str("\n## AST Chunk Around Cursor\n");
+            context.push_str(&ast_chunk);
+            context.push('\n');
+        }
+
+        context
+    }
+
+    fn build_chat_history_context(&self) -> String {
+        let mut history = String::new();
+
+        for entry in &self.chat_history {
+            if entry.content.is_empty() {
+                continue;
+            }
+            history.push_str(&entry.role);
+            history.push_str(": ");
+            history.push_str(&entry.content);
+            history.push('\n');
+        }
+
+        history
+    }
+
+    fn extract_cursor_ast_chunk(&self) -> Option<String> {
+        let path = self.filename.as_ref()?;
+        let language = Language::from_path(path);
+        let ts_lang = language.ts_language()?;
+
+        let lines = self.buffer.lines();
+        let source = lines.join("\n");
+
+        let mut parser = Parser::new();
+        if parser.set_language(ts_lang).is_err() {
+            return None;
+        }
+
+        let tree = parser.parse(&source, None)?;
+        let root = tree.root_node();
+
+        let cursor = self.buffer.cursor();
+        let point = tree_sitter::Point {
+            row: cursor.line,
+            column: cursor.column,
+        };
+
+        let node = root.descendant_for_point_range(point, point)?;
+
+        let text = node.utf8_text(source.as_bytes()).ok()?.to_string();
+        let start = node.start_position();
+        let end = node.end_position();
+
+        Some(format!(
+            "kind: {}\nrange: {}:{} - {}:{}\n{}",
+            node.kind(),
+            start.row + 1,
+            start.column + 1,
+            end.row + 1,
+            end.column + 1,
+            text
+        ))
+    }
+
+    fn submit_chat_message(&mut self) {
+        let message = self.chat_input.trim().to_string();
+        if message.is_empty() {
+            return;
+        }
+
+        let mut context = self.build_chat_context();
+        let history_context = self.build_chat_history_context();
+        if !history_context.is_empty() {
+            context.push_str("\n## Conversation History\n");
+            context.push_str(&history_context);
+        }
+        self.chat_context_tokens = Self::estimate_tokens(&context);
+
+        self.chat_history.push(ChatEntry {
+            role: "user".to_string(),
+            content: message.clone(),
+        });
+        self.chat_history.push(ChatEntry {
+            role: "assistant".to_string(),
+            content: String::new(),
+        });
+
+        self.chat_input.clear();
+        self.chat_streaming = true;
+
+        let (tx, rx) = mpsc::channel::<String>();
+        self.chat_tx = Some(tx.clone());
+        self.chat_rx = Some(rx);
+
+        let maybe_backend = build_backend_from_editor_config();
+        let status_sender = tx.clone();
+
+        let handle = std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = status_sender.send(format!("[chat runtime error: {}]", e));
+                    let _ = status_sender.send("__IDEP_CHAT_DONE__".to_string());
+                    return;
+                }
+            };
+
+            let backend = match maybe_backend {
+                Ok(backend) => backend,
+                Err(e) => {
+                    let _ = status_sender.send(format!("[chat config error: {}]", e));
+                    let _ = status_sender.send("__IDEP_CHAT_DONE__".to_string());
+                    return;
+                }
+            };
+
+            let mut session = ChatSession::with_debounce(backend, Duration::from_millis(300));
+            let stream_sender = tx.clone();
+            let result = rt.block_on(async move {
+                session
+                    .send_streaming_with_context(&message, &context, move |tok| {
+                        let _ = stream_sender.send(tok.to_string());
+                    })
+                    .await
+            });
+
+            if let Err(e) = result {
+                let _ = tx.send(format!("\n[chat error: {}]", e));
+            }
+            let _ = tx.send("__IDEP_CHAT_DONE__".to_string());
+        });
+
+        self.pending_chat = Some(handle);
+    }
+}
+
+fn build_backend_from_editor_config() -> Result<Box<dyn Backend>> {
+    let cfg = load_config(None)?;
+    let backend: Box<dyn Backend> = match cfg.ai.backend {
+        BackendKind::Ollama => {
+            let url = cfg
+                .ai
+                .endpoint
+                .unwrap_or_else(|| "http://localhost:11434".to_string());
+            Box::new(OllamaBackend::new(url, cfg.ai.model))
+        }
+        BackendKind::Anthropic => {
+            let key = cfg
+                .ai
+                .auth
+                .api_key
+                .ok_or_else(|| anyhow::anyhow!("missing api_key for anthropic backend"))?;
+            Box::new(AnthropicBackend::new(key, cfg.ai.model, 2048))
+        }
+        BackendKind::Huggingface => {
+            let key = cfg
+                .ai
+                .auth
+                .api_key
+                .ok_or_else(|| anyhow::anyhow!("missing api_key for huggingface backend"))?;
+            Box::new(HuggingFaceBackend::new(key, cfg.ai.model, cfg.ai.endpoint))
+        }
+        BackendKind::Openai => {
+            let url = cfg
+                .ai
+                .endpoint
+                .unwrap_or_else(|| "https://api.openai.com".to_string());
+            Box::new(OpenAiCompatBackend::new(
+                url,
+                cfg.ai.auth.api_key,
+                cfg.ai.model,
+            ))
+        }
+    };
+    Ok(backend)
+}
+
+fn build_completion_engine_from_editor_config() -> Result<(CompletionEngine, u64)> {
+    let cfg = load_config(None)?;
+    let backend = build_backend_from_editor_config()?;
+    let fim_tokens = FimTokens::for_model(&cfg.ai.model.to_lowercase());
+    let engine = CompletionEngine::new(backend, fim_tokens);
+    Ok((engine, cfg.completion.debounce_ms))
 }
 
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -795,8 +1151,15 @@ fn main() -> Result<()> {
         App::new()
     };
 
-    // TODO: Load config and initialize completion engine
-    // (Will be implemented in a follow-up commit)
+    // Load config and initialize completion engine
+    match build_completion_engine_from_editor_config() {
+        Ok((engine, debounce_ms)) => {
+            app = app.with_completion_engine(engine, debounce_ms);
+        }
+        Err(e) => {
+            app.status_message = Some(format!("completion disabled: {}", e));
+        }
+    }
 
     // Start LSP server for the opened file (if supported language)
     app.maybe_start_lsp();
@@ -816,6 +1179,8 @@ fn main() -> Result<()> {
         app.check_completion_debounce();
         // Poll for diagnostics from LSP
         app.poll_diagnostics();
+        // Poll streaming chat updates
+        app.poll_chat_stream();
 
         // Compute layout to get viewport height for scroll update
         let size = terminal.size()?;
@@ -835,7 +1200,7 @@ fn main() -> Result<()> {
                     app.update_scroll(viewport_height);
                 }
                 Event::Mouse(mouse) => {
-                    handle_mouse_event(&mut app, mouse, viewport_height);
+                    handle_mouse_event(&mut app, mouse, viewport_height, size.width);
                     // Update scroll after mouse scroll to ensure cursor stays visible
                     app.update_scroll(viewport_height);
                 }
@@ -851,21 +1216,44 @@ fn main() -> Result<()> {
 }
 
 /// Handle mouse events for scrolling and cursor positioning.
-fn handle_mouse_event(app: &mut App, mouse: MouseEvent, viewport_height: usize) {
+fn handle_mouse_event(
+    app: &mut App,
+    mouse: MouseEvent,
+    viewport_height: usize,
+    terminal_width: u16,
+) {
     let line_num_width = app.line_number_width();
+    let chat_start_col = ((terminal_width as u32 * 65) / 100) as u16;
 
     match mouse.kind {
         MouseEventKind::ScrollDown => {
-            // Scroll down by 3 lines
-            let lines = app.buffer.lines();
-            let max_scroll = lines.len().saturating_sub(viewport_height);
-            app.scroll_offset = (app.scroll_offset + 3).min(max_scroll);
+            if app.chat_panel_visible {
+                app.chat_scroll =
+                    (app.chat_scroll + 1).min(app.chat_history.len().saturating_sub(1));
+            } else {
+                // Scroll down by 3 lines
+                let lines = app.buffer.lines();
+                let max_scroll = lines.len().saturating_sub(viewport_height);
+                app.scroll_offset = (app.scroll_offset + 3).min(max_scroll);
+            }
         }
         MouseEventKind::ScrollUp => {
-            // Scroll up by 3 lines
-            app.scroll_offset = app.scroll_offset.saturating_sub(3);
+            if app.chat_panel_visible {
+                app.chat_scroll = app.chat_scroll.saturating_sub(1);
+            } else {
+                // Scroll up by 3 lines
+                app.scroll_offset = app.scroll_offset.saturating_sub(3);
+            }
         }
         MouseEventKind::Down(_) if mouse.column >= line_num_width => {
+            if app.chat_panel_visible && mouse.column >= chat_start_col {
+                app.mode = Mode::ChatInput;
+                app.chat_focus = true;
+                return;
+            }
+
+            app.chat_focus = false;
+
             // Click to position cursor
             // Mouse column includes line number gutter, so adjust
             let editor_col = mouse.column - line_num_width;
@@ -898,6 +1286,22 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
     }
 
     match app.mode {
+        Mode::ChatInput => match key.code {
+            KeyCode::Esc => {
+                app.mode = Mode::Normal;
+                app.chat_focus = false;
+            }
+            KeyCode::Enter => {
+                app.submit_chat_message();
+            }
+            KeyCode::Backspace => {
+                app.chat_input.pop();
+            }
+            KeyCode::Char(c) if c.is_ascii_graphic() || c == ' ' => {
+                app.chat_input.push(c);
+            }
+            _ => {}
+        },
         Mode::Command => match key.code {
             KeyCode::Enter => {
                 app.execute_command()?;
@@ -931,7 +1335,17 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
                     app.pending_d = false;
                     app.mode = Mode::Insert;
                 }
+                KeyCode::Enter if app.chat_panel_visible => {
+                    app.mode = Mode::ChatInput;
+                }
                 KeyCode::Char('h') | KeyCode::Left => app.move_cursor(-1, 0),
+                KeyCode::Char('j') if app.chat_panel_visible && app.chat_focus => {
+                    app.chat_scroll =
+                        (app.chat_scroll + 1).min(app.chat_history.len().saturating_sub(1));
+                }
+                KeyCode::Char('k') if app.chat_panel_visible && app.chat_focus => {
+                    app.chat_scroll = app.chat_scroll.saturating_sub(1);
+                }
                 KeyCode::Char('j') | KeyCode::Down => app.move_cursor(0, 1),
                 KeyCode::Char('k') | KeyCode::Up => app.move_cursor(0, -1),
                 KeyCode::Char('l') | KeyCode::Right => app.move_cursor(1, 0),
@@ -951,6 +1365,14 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Result<()> {
                 }
                 KeyCode::Char('d') if app.pending_space => {
                     app.toggle_diagnostics();
+                    app.pending_space = false;
+                }
+                KeyCode::Char(c) if app.pending_space && c == app.chat_toggle_key => {
+                    app.toggle_chat_panel();
+                    app.pending_space = false;
+                }
+                KeyCode::Char(c) if app.pending_space && c == app.chat_clear_key => {
+                    app.clear_chat_history();
                     app.pending_space = false;
                 }
                 KeyCode::Char('d') => app.pending_d = true,
@@ -1110,10 +1532,20 @@ fn render(app: &mut App, frame: &mut Frame) {
         (chunks[0], chunks[1], None)
     };
 
+    let (editor_container, chat_container) = if app.chat_panel_visible {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+            .split(content_area);
+        (split[0], Some(split[1]))
+    } else {
+        (content_area, None)
+    };
+
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(line_num_width), Constraint::Min(1)])
-        .split(content_area.inner(&Margin {
+        .split(editor_container.inner(&Margin {
             horizontal: 0,
             vertical: 0,
         }));
@@ -1441,6 +1873,65 @@ fn render(app: &mut App, frame: &mut Frame) {
     );
     frame.render_widget(editor_widget, editor_area);
 
+    if let Some(chat_area) = chat_container {
+        let chat_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(3)])
+            .split(chat_area);
+
+        let history_area = chat_chunks[0];
+        let input_area = chat_chunks[1];
+
+        let mut chat_lines: Vec<Line> = Vec::new();
+        for entry in &app.chat_history {
+            let role_style = if entry.role == "user" {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            };
+            chat_lines.push(Line::from(vec![
+                Span::styled(format!("{}: ", entry.role), role_style),
+                Span::raw(entry.content.clone()),
+            ]));
+        }
+
+        if chat_lines.is_empty() {
+            chat_lines.push(Line::from(Span::styled(
+                "Ask about the open file. Press Enter to send.",
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+
+        let title = if app.chat_streaming {
+            format!("Chat • ctx≈{} tok • streaming", app.chat_context_tokens)
+        } else {
+            format!("Chat • ctx≈{} tok", app.chat_context_tokens)
+        };
+
+        let chat_widget = Paragraph::new(chat_lines)
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .scroll((app.chat_scroll as u16, 0))
+            .style(Style::default().bg(Color::Black).fg(Color::White));
+        frame.render_widget(chat_widget, history_area);
+
+        let input_prompt = if app.mode == Mode::ChatInput {
+            "> "
+        } else {
+            "  "
+        };
+        let input_widget = Paragraph::new(Line::from(vec![
+            Span::styled(input_prompt, Style::default().fg(Color::Green)),
+            Span::raw(app.chat_input.clone()),
+        ]))
+        .block(Block::default().title("Input").borders(Borders::ALL))
+        .style(Style::default().bg(Color::Black).fg(Color::White));
+        frame.render_widget(input_widget, input_area);
+    }
+
     let filename_str = app
         .filename
         .as_ref()
@@ -1483,6 +1974,15 @@ fn render(app: &mut App, frame: &mut Frame) {
             _ => String::new(),
         };
 
+        let chat_hint = if app.chat_panel_visible {
+            format!(
+                " | Space+{} chat | Space+{} clear",
+                app.chat_toggle_key, app.chat_clear_key
+            )
+        } else {
+            String::new()
+        };
+
         vec![
             Span::styled(
                 format!("{}:{}", cursor.line + 1, cursor.column + 1),
@@ -1515,6 +2015,7 @@ fn render(app: &mut App, frame: &mut Frame) {
                 }),
             ),
             Span::styled(completion_str, Style::default().fg(Color::Cyan)),
+            Span::styled(chat_hint, Style::default().fg(Color::Magenta)),
         ]
     };
 

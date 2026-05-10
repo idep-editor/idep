@@ -15,6 +15,54 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.4]
+
+### Added
+
+- **AI Chat Panel in TUI** (`idep-tui`) with split editor/chat layout
+  - Toggle chat pane with configurable key chord (`Space+c` default; env override `IDEP_CHAT_TOGGLE_KEY`)
+  - Chat input box in pane footer; `Enter` sends message
+  - Streaming responses rendered incrementally as tokens arrive
+  - Chat history scrolling via `j/k` and mouse scroll when pane is active
+  - Context injection includes current file neighborhood and cursor-adjacent AST chunk
+  - Chat header displays estimated injected context token count
+  - Clear chat history with configurable key chord (`Space+x` default; env override `IDEP_CHAT_CLEAR_KEY`)
+- **Chat streaming integration test** in `idep-tui/tests/chat_panel_v0_1_4.rs`
+
+### Changed
+
+- Chat pane focus handling for `j/k` navigation so editor movement remains available in Normal mode
+- Chat auto-scroll behavior now preserves user position when reading older messages
+
+### Fixed
+
+- Mouse click routing for split-pane chat/editor interactions
+- Follow-up chat context now includes prior conversation history for multi-turn continuity
+
+---
+
+## [0.1.3]
+
+### Added
+
+- **Inline AI Completions in TUI** (`idep-tui`)
+  - Debounced completion trigger while typing in Insert mode (default 400ms)
+  - Ghost text rendering after cursor with dimmed styling
+  - `Tab` accepts suggestion into buffer
+  - In-flight completion cancellation when typing resumes
+  - Status bar spinner while fetching completions
+- **Completion integration test** in `idep-tui/tests/completion_v0_1_3.rs`
+
+### Changed
+
+- Completion backend loading wired through editor config and model-specific FIM token selection
+
+### Fixed
+
+- Suggestion dismissal behavior on `Esc`, non-accepting keys, and edit actions to avoid stale ghost text
+
+---
+
 ## [0.1.2] - 2025-04-28
 
 ### Added

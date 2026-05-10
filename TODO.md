@@ -467,19 +467,19 @@
 
 ---
 
-### 🔴 v0.1.4 — AI Chat Panel in TUI
+### ✅ v0.1.4 — AI Chat Panel in TUI
 > **Gate:** Ask a question about the open file; streaming response appears in split pane
 
-- [ ] Split layout: editor pane (left/top) + chat pane (right/bottom)
-- [ ] Toggle chat pane: configurable key (default `Space+c`)
-- [ ] Chat input box at bottom of chat pane
-- [ ] Send message: `Enter`
-- [ ] Streaming response: tokens appear as they arrive (no waiting for full response)
-- [ ] Scroll history: `j/k` or mouse scroll in chat pane
-- [ ] Context injection: current file + cursor-adjacent AST chunk attached automatically
-- [ ] Show token count of injected context in chat pane header
-- [ ] Clear chat history: configurable key (default `Space+x`)
-- [ ] Integration test: send question, verify streaming response received
+- [x] Split layout: editor pane (left/top) + chat pane (right/bottom)
+- [x] Toggle chat pane: configurable key (default `Space+c`)
+- [x] Chat input box at bottom of chat pane
+- [x] Send message: `Enter`
+- [x] Streaming response: tokens appear as they arrive (no waiting for full response)
+- [x] Scroll history: `j/k` or mouse scroll in chat pane
+- [x] Context injection: current file + cursor-adjacent AST chunk attached automatically
+- [x] Show token count of injected context in chat pane header
+- [x] Clear chat history: configurable key (default `Space+x`)
+- [x] Integration test: send question, verify streaming response received
 
 ---
 
