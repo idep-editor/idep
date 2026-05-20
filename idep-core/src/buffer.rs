@@ -36,6 +36,17 @@ impl Edit {
     }
 }
 
+/// Represents a cursor position within a buffer.
+///
+/// All indices are zero-based. Line indices are 0..num_lines, and column indices
+/// are 0..line_length. The cursor can be positioned at the end of the last line
+/// for text insertion.
+///
+/// # Examples
+/// ```ignore
+/// use idep_core::buffer::Cursor;
+/// let cursor = Cursor { line: 0, column: 5 };
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
     /// Zero-based line index
@@ -44,6 +55,25 @@ pub struct Cursor {
     pub column: usize,
 }
 
+/// A text buffer with undo/redo support.
+///
+/// `Buffer` stores text in a [`Rope`] data structure for efficient editing operations.
+/// All operations use character indices (not byte offsets). The cursor tracks the
+/// current position for insertions and is updated automatically by edit operations.
+///
+/// Undo/redo history is preserved automatically for all edits, with a configurable
+/// maximum history size (default 100 operations).
+///
+/// # Examples
+/// ```ignore
+/// use idep_core::buffer::Buffer;
+///
+/// let mut buf = Buffer::with_text("hello");
+/// buf.insert(5, " world");
+/// assert_eq!(buf.to_string(), "hello world");
+/// buf.undo();
+/// assert_eq!(buf.to_string(), "hello");
+/// ```
 pub struct Buffer {
     rope: Rope,
     cursor: Cursor,
@@ -53,6 +83,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    /// Creates a new empty buffer with cursor at (0, 0).
     pub fn new() -> Self {
         Self {
             rope: Rope::new(),
@@ -63,6 +94,9 @@ impl Buffer {
         }
     }
 
+    /// Creates a new buffer initialized with the given text.
+    ///
+    /// The cursor is positioned at (0, 0). No history is created for this initialization.
     pub fn with_text(text: &str) -> Self {
         Self {
             rope: Rope::from_str(text),
@@ -128,6 +162,13 @@ impl Buffer {
         }
     }
 
+    /// Returns all lines in the buffer.
+    ///
+    /// Each line has trailing newlines removed. An empty buffer returns an empty vector.
+    ///
+    /// # Performance
+    /// This allocates a new vector for every call. For large buffers, consider iterating
+    /// over the rope directly via [`Self::rope()`].
     pub fn lines(&self) -> Vec<String> {
         let mut lines: Vec<String> = self
             .rope
@@ -140,6 +181,7 @@ impl Buffer {
         lines
     }
 
+    /// Returns the current cursor position.
     pub fn cursor(&self) -> Cursor {
         self.cursor
     }
@@ -639,5 +681,171 @@ mod tests {
 
         assert!(buf.undo());
         assert_eq!(buf.to_string(), "line1\nline2\nline3");
+    }
+
+    // Edge-case tests
+    #[test]
+    fn empty_buffer_cursor_position() {
+        let buf = Buffer::new();
+        assert_eq!(buf.cursor().line, 0);
+        assert_eq!(buf.cursor().column, 0);
+        assert_eq!(buf.to_string(), "");
+    }
+
+    #[test]
+    fn cursor_clamp_out_of_bounds_line() {
+        let mut buf = Buffer::with_text("hello");
+        buf.set_cursor(100, 0); // Line way out of bounds
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0); // Clamped to only line
+    }
+
+    #[test]
+    fn cursor_clamp_out_of_bounds_column() {
+        let mut buf = Buffer::with_text("hello");
+        buf.set_cursor(0, 100); // Column out of bounds
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0);
+        assert!(cursor.column <= "hello".chars().count());
+    }
+
+    #[test]
+    fn delete_single_char_buffer() {
+        let mut buf = Buffer::with_text("x");
+        buf.delete(0..1);
+        assert_eq!(buf.to_string(), "");
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0);
+        assert_eq!(cursor.column, 0);
+    }
+
+    #[test]
+    fn move_cursor_to_end_empty_buffer() {
+        let mut buf = Buffer::new();
+        buf.move_cursor_to_end();
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0);
+        assert_eq!(cursor.column, 0);
+    }
+
+    #[test]
+    fn move_cursor_to_end_single_line() {
+        let mut buf = Buffer::with_text("hello");
+        buf.move_cursor_to_end();
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 0);
+        assert_eq!(cursor.column, 5);
+    }
+
+    #[test]
+    fn move_cursor_to_end_multiline() {
+        let mut buf = Buffer::with_text("hello\nworld");
+        buf.move_cursor_to_end();
+        let cursor = buf.cursor();
+        assert_eq!(cursor.line, 1);
+        assert_eq!(cursor.column, 5); // "world" is 5 chars
+    }
+
+    #[test]
+    fn cursor_char_index_empty_buffer() {
+        let buf = Buffer::new();
+        assert_eq!(buf.cursor_char_index(), 0);
+    }
+
+    #[test]
+    fn cursor_char_index_multiline() {
+        let mut buf = Buffer::with_text("abc\ndef");
+        buf.set_cursor(1, 2); // Line 1, column 2 (at 'f')
+        let index = buf.cursor_char_index();
+        // "abc\n" = 4 chars, "de" = 2 chars, so index should be 6
+        assert_eq!(index, 6);
+    }
+
+    #[test]
+    fn apply_completion_with_insert_and_replace() {
+        // InsertAndReplace uses the 'insert' range when there's no selection.
+        // Here we test that insert range (0,0)-(0,3) deletes "foo" and inserts "bar".
+        let mut buf = Buffer::with_text("foo");
+        buf.set_cursor(0, 0); // Cursor at start
+
+        let insert_and_replace = CompletionTextEdit::InsertAndReplace(
+            lsp_types::InsertReplaceEdit {
+                new_text: "bar".into(),
+                // Insert range: delete from (0,0) to (0,3) ["foo"] and insert "bar"
+                insert: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: 0,
+                        character: 3,
+                    },
+                },
+                // Replace range is only used when text is selected (not in this test)
+                replace: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: 0,
+                        character: 3,
+                    },
+                },
+            },
+        );
+
+        let item = CompletionItem {
+            label: "bar".into(),
+            text_edit: Some(insert_and_replace),
+            ..Default::default()
+        };
+
+        buf.apply_completion(&item);
+        assert_eq!(buf.to_string(), "bar");
+    }
+
+    #[test]
+    fn delete_invalid_range_is_noop() {
+        let mut buf = Buffer::with_text("hello");
+        let original = buf.to_string();
+        // Delete with start >= end (invalid)
+        buf.delete(3..1);
+        assert_eq!(buf.to_string(), original);
+    }
+
+    #[test]
+    fn delete_past_end_is_safe() {
+        let mut buf = Buffer::with_text("hello");
+        // Try to delete past the end
+        buf.delete(3..100);
+        assert_eq!(buf.to_string(), "hel"); // Clamped to buffer length
+    }
+
+    #[test]
+    fn insert_at_past_end_clamps() {
+        let mut buf = Buffer::with_text("hello");
+        // Insert at position way past the end
+        buf.insert(100, " world");
+        assert_eq!(buf.to_string(), "hello world"); // Inserted at end
+    }
+
+    #[test]
+    fn undo_redo_max_history_exceeded() {
+        let mut buf = Buffer::new();
+        buf.set_max_history(2);
+
+        // Create 3 edits (exceeds max of 2)
+        buf.insert(0, "a");
+        buf.insert(1, "b");
+        buf.insert(2, "c");
+        assert_eq!(buf.to_string(), "abc");
+
+        // Only the last 2 should be undoable
+        assert!(buf.undo()); // Undo "c"
+        assert!(buf.undo()); // Undo "b"
+        assert!(!buf.undo()); // Can't undo "a" (was dropped)
+        assert_eq!(buf.to_string(), "a");
     }
 }

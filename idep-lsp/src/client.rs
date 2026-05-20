@@ -71,6 +71,19 @@ impl LspClient {
         let stderr_output = Arc::new(Mutex::new(Vec::new()));
         let stderr_output_clone = stderr_output.clone();
 
+        // Spawn a dedicated OS thread to read stderr from the language server process.
+        //
+        // We use std::thread::spawn (not tokio::spawn_blocking) because:
+        // 1. BufReader::lines() is a blocking read; we cannot use async/await
+        // 2. This thread only runs for the lifetime of the LSP client process
+        // 3. One thread per LSP instance is a reasonable overhead for server diagnostics
+        //
+        // The thread accumulates all stderr output in a thread-safe Vec<String> for
+        // logging and debugging. Lines are read until EOF (when the child process exits).
+        //
+        // Future optimization: if idep runs multiple LSP servers concurrently in a
+        // tokio runtime, consider migrating to tokio::task::spawn_blocking to reuse
+        // the runtime's thread pool instead of spawning OS threads directly.
         std::thread::spawn(move || {
             let reader = BufReader::new(child_stderr);
             for line in reader.lines().map_while(Result::ok) {
