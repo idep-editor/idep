@@ -25,11 +25,24 @@ fn normalize_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// A workspace with a root directory for file operations.
+///
+/// `Workspace` provides operations for opening, saving, and watching files relative
+/// to a root directory. All paths are relative to this root.
 pub struct Workspace {
     root: PathBuf,
 }
 
 impl Workspace {
+    /// Create a new workspace with the given root directory.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::workspace::Workspace;
+    /// use std::path::PathBuf;
+    ///
+    /// let ws = Workspace::new(PathBuf::from("/home/user/project"));
+    /// ```
     pub fn new(root: PathBuf) -> Self {
         Self { root }
     }
@@ -38,14 +51,41 @@ impl Workspace {
         &self.root
     }
 
-    /// Open a file relative to the workspace root into a Buffer
+    /// Open a file relative to the workspace root into a Buffer.
+    ///
+    /// Returns an error if the file doesn't exist or can't be read.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::workspace::Workspace;
+    /// use std::path::PathBuf;
+    ///
+    /// let ws = Workspace::new(PathBuf::from("."));
+    /// let buffer = ws.open_file("src/main.rs")?;
+    /// println!("File has {} characters", buffer.to_string().len());
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn open_file(&self, path: impl AsRef<Path>) -> Result<Buffer> {
         let abs = self.root.join(path);
         let contents = std::fs::read_to_string(abs)?;
         Ok(Buffer::with_text(&contents))
     }
 
-    /// Save a Buffer to a file relative to the workspace root
+    /// Save a Buffer to a file relative to the workspace root.
+    ///
+    /// Creates parent directories if they don't exist. Returns an error if the file
+    /// can't be written.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::{buffer::Buffer, workspace::Workspace};
+    /// use std::path::PathBuf;
+    ///
+    /// let ws = Workspace::new(PathBuf::from("."));
+    /// let mut buffer = Buffer::with_text("fn main() {}");
+    /// ws.save_file("src/generated.rs", &buffer)?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn save_file(&self, path: impl AsRef<Path>, buffer: &Buffer) -> Result<()> {
         let abs = self.root.join(path);
         if let Some(parent) = abs.parent() {
@@ -56,8 +96,30 @@ impl Workspace {
     }
 
     /// Watch the workspace tree and invoke callback on file changes.
+    ///
     /// Uses debouncing (100ms) to avoid multiple callbacks for rapid writes.
-    /// Caller must keep the returned debouncer alive.
+    /// The returned debouncer must be kept alive for the watch to remain active.
+    /// When dropped, the watch is automatically cancelled.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::workspace::Workspace;
+    /// use std::path::PathBuf;
+    /// use std::sync::atomic::{AtomicUsize, Ordering};
+    /// use std::sync::Arc;
+    ///
+    /// let ws = Workspace::new(PathBuf::from("."));
+    /// let change_count = Arc::new(AtomicUsize::new(0));
+    /// let count = change_count.clone();
+    ///
+    /// let _watch = ws.watch(move |path| {
+    ///     println!("File changed: {:?}", path);
+    ///     count.fetch_add(1, Ordering::SeqCst);
+    /// })?;
+    ///
+    /// // Watch remains active until 'watch' is dropped
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn watch<F>(
         &self,
         mut on_change: F,

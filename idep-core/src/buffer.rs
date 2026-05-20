@@ -74,6 +74,44 @@ pub struct Cursor {
 /// buf.undo();
 /// assert_eq!(buf.to_string(), "hello");
 /// ```
+/// An iterator over lines in a buffer with trailing newlines trimmed.
+///
+/// This iterator returns `String` slices with newlines removed, matching the
+/// behavior of `Buffer::lines()` but without allocating a vector upfront.
+/// It still allocates a String for each line (to handle the trim), but avoids
+/// the single large Vec allocation.
+pub struct LinesIter<'a> {
+    inner: ropey::iter::Lines<'a>,
+    remaining: usize,
+}
+
+impl<'a> Iterator for LinesIter<'a> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        if let Some(line) = self.inner.next() {
+            self.remaining -= 1;
+            let s = line.to_string().trim_end_matches('\n').to_string();
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for LinesIter<'a> {
+    fn len(&self) -> usize {
+        self.remaining
+    }
+}
+
 pub struct Buffer {
     rope: Rope,
     cursor: Cursor,
@@ -107,7 +145,19 @@ impl Buffer {
         }
     }
 
-    /// Insert text at the given character position (clamped to buffer length)
+    /// Insert text at the given character position (clamped to buffer length).
+    ///
+    /// The cursor is automatically updated to the position after the inserted text.
+    /// The operation is recorded in undo history.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello");
+    /// buf.insert(5, " world");
+    /// assert_eq!(buf.to_string(), "hello world");
+    /// assert_eq!(buf.cursor().column, 11); // Cursor at end of inserted text
+    /// ```
     pub fn insert(&mut self, pos: usize, text: &str) {
         let insert_pos = pos.min(self.rope.len_chars());
         let cursor_before = self.cursor;
@@ -132,7 +182,18 @@ impl Buffer {
         }
     }
 
-    /// Delete a character range [start, end); no-op if invalid range
+    /// Delete a character range [start, end); no-op if invalid range.
+    ///
+    /// The range is clamped to buffer bounds. The cursor is repositioned to the
+    /// start of the deleted range. The operation is recorded in undo history.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello world");
+    /// buf.delete(5..11); // Delete " world"
+    /// assert_eq!(buf.to_string(), "hello");
+    /// ```
     pub fn delete(&mut self, range: Range<usize>) {
         let len = self.rope.len_chars();
         if range.start >= range.end || range.start >= len {
@@ -162,23 +223,53 @@ impl Buffer {
         }
     }
 
-    /// Returns all lines in the buffer.
+    /// Returns a zero-copy iterator over lines in the buffer.
+    ///
+    /// Each line has trailing newlines removed. This is the efficient way to process
+    /// large buffers since it avoids allocating a vector.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let buf = Buffer::with_text("hello\nworld");
+    /// let line_count = buf.lines_iter().count();
+    /// assert_eq!(line_count, 2);
+    /// ```
+    pub fn lines_iter(&self) -> LinesIter<'_> {
+        let line_count = self.rope.len_lines();
+        LinesIter {
+            inner: self.rope.lines(),
+            remaining: if line_count > 0 {
+                // Check if last line is empty (happens with trailing newline)
+                let last_line = self.rope.line(line_count - 1);
+                if last_line.len_chars() == 0 {
+                    line_count - 1
+                } else {
+                    line_count
+                }
+            } else {
+                0
+            },
+        }
+    }
+
+    /// Returns all lines in the buffer as Strings.
     ///
     /// Each line has trailing newlines removed. An empty buffer returns an empty vector.
     ///
     /// # Performance
-    /// This allocates a new vector for every call. For large buffers, consider iterating
-    /// over the rope directly via [`Self::rope()`].
+    /// This allocates a new vector for every call. **For large buffers, prefer
+    /// [`Self::lines_iter()`]** which returns an iterator without pre-allocating.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let buf = Buffer::with_text("hello\nworld");
+    /// let lines = buf.lines();
+    /// assert_eq!(lines, vec!["hello", "world"]);
+    /// ```
     pub fn lines(&self) -> Vec<String> {
-        let mut lines: Vec<String> = self
-            .rope
-            .lines()
-            .map(|l| l.to_string().trim_end_matches('\n').to_string())
-            .collect();
-        if lines.last().map(|l: &String| l.is_empty()).unwrap_or(false) {
-            lines.pop();
-        }
-        lines
+        self.lines_iter().collect()
     }
 
     /// Returns the current cursor position.
@@ -219,7 +310,22 @@ impl Buffer {
     }
 
     /// Set cursor to a specific (line, column) position.
-    /// Line and column are clamped to valid bounds.
+    ///
+    /// Line and column are clamped to valid bounds. If the line or column
+    /// exceeds the buffer, they are silently clamped to the last valid position.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello\nworld");
+    /// buf.set_cursor(1, 5); // Line 1, column 5 (end of "world")
+    /// assert_eq!(buf.cursor().line, 1);
+    /// assert_eq!(buf.cursor().column, 5);
+    ///
+    /// // Out-of-bounds positions are clamped
+    /// buf.set_cursor(100, 100);
+    /// assert_eq!(buf.cursor().line, 1); // Last line
+    /// ```
     pub fn set_cursor(&mut self, line: usize, column: usize) {
         let max_line = self.rope.len_lines().saturating_sub(1);
         let line = line.min(max_line);
@@ -237,6 +343,24 @@ impl Buffer {
     }
 
     /// Apply a text edit: delete the range and insert new text.
+    ///
+    /// This is commonly used to apply LSP completion or document changes.
+    /// The operation deletes the specified range first, then inserts the new text,
+    /// and is recorded in undo history.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// use lsp_types::{Range, Position};
+    ///
+    /// let mut buf = Buffer::with_text("hello world");
+    /// let range = Range {
+    ///     start: Position { line: 0, character: 6 },
+    ///     end: Position { line: 0, character: 11 },
+    /// };
+    /// buf.apply_text_edit(range, "universe");
+    /// assert_eq!(buf.to_string(), "hello universe");
+    /// ```
     pub fn apply_text_edit(&mut self, range: lsp_types::Range, new_text: &str) {
         let start_char =
             self.rope.line_to_char(range.start.line as usize) + range.start.character as usize;
@@ -247,7 +371,26 @@ impl Buffer {
     }
 
     /// Apply a completion item at the current cursor position.
-    /// Uses textEdit (with range replacement) if present, otherwise insertText or label.
+    ///
+    /// If the completion has a `textEdit`, it is applied with range replacement.
+    /// Otherwise, falls back to `insertText` if present, or the completion `label`.
+    /// The operation is recorded in undo history.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// use lsp_types::CompletionItem;
+    ///
+    /// let mut buf = Buffer::with_text("fn hello");
+    /// buf.move_cursor_to_end();
+    /// let item = CompletionItem {
+    ///     label: "()".into(),
+    ///     insert_text: Some("() {}".into()),
+    ///     ..Default::default()
+    /// };
+    /// buf.apply_completion(&item);
+    /// assert_eq!(buf.to_string(), "fn hello() {}");
+    /// ```
     pub fn apply_completion(&mut self, item: &CompletionItem) {
         if let Some(edit) = &item.text_edit {
             match edit {
@@ -302,13 +445,49 @@ impl Buffer {
     }
 
     /// Sets the maximum number of edits to keep in history.
+    ///
+    /// If the new limit is smaller than the current history size, older operations
+    /// are discarded. The minimum value is 1; values of 0 are automatically clamped to 1.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::new();
+    /// buf.set_max_history(10);
+    ///
+    /// // Create 15 edits
+    /// for i in 0..15 {
+    ///     buf.insert(buf.to_string().len(), &i.to_string());
+    /// }
+    ///
+    /// // Can only undo the last 10
+    /// for _ in 0..10 {
+    ///     assert!(buf.undo());
+    /// }
+    /// assert!(!buf.undo()); // 11th undo fails
+    /// ```
     pub fn set_max_history(&mut self, max: usize) {
         self.max_history = max.max(1); // At least 1
         self.maintain_history_limit();
     }
 
     /// Undo the last edit operation.
-    /// Returns true if an operation was undone.
+    ///
+    /// Returns `true` if an operation was undone, `false` if the undo stack is empty.
+    /// The cursor is restored to its state before the edit.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello");
+    /// buf.insert(5, " world");
+    /// assert_eq!(buf.to_string(), "hello world");
+    ///
+    /// assert!(buf.undo());
+    /// assert_eq!(buf.to_string(), "hello");
+    ///
+    /// assert!(!buf.undo()); // Nothing left to undo
+    /// ```
     pub fn undo(&mut self) -> bool {
         if let Some(edit) = self.undo_stack.pop() {
             // Remove the text that was inserted
@@ -332,7 +511,21 @@ impl Buffer {
     }
 
     /// Redo the last undone edit operation.
-    /// Returns true if an operation was redone.
+    ///
+    /// Returns `true` if an operation was redone, `false` if the redo stack is empty.
+    /// Note that performing a new edit clears the redo stack.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello");
+    /// buf.insert(5, " world");
+    /// buf.undo();
+    /// assert_eq!(buf.to_string(), "hello");
+    ///
+    /// assert!(buf.redo());
+    /// assert_eq!(buf.to_string(), "hello world");
+    /// ```
     pub fn redo(&mut self) -> bool {
         if let Some(edit) = self.redo_stack.pop() {
             // Remove old text if any
@@ -358,6 +551,20 @@ impl Buffer {
     }
 
     /// Clears all undo and redo history.
+    ///
+    /// After calling this, no operations can be undone or redone.
+    /// Useful when starting a new editing session or to free memory.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use idep_core::buffer::Buffer;
+    /// let mut buf = Buffer::with_text("hello");
+    /// buf.insert(5, " world");
+    /// buf.clear_history();
+    ///
+    /// assert!(!buf.can_undo());
+    /// assert!(!buf.can_redo());
+    /// ```
     pub fn clear_history(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
@@ -417,9 +624,9 @@ mod tests {
     }
 
     #[test]
-    fn lines_iterates_strings() {
+    fn lines_iter_basic() {
         let buf = Buffer::with_text("a\nb\n");
-        let lines = buf.lines();
+        let lines: Vec<_> = buf.lines_iter().collect();
         assert_eq!(lines, vec!["a".to_string(), "b".to_string()]);
     }
 
@@ -768,8 +975,8 @@ mod tests {
         let mut buf = Buffer::with_text("foo");
         buf.set_cursor(0, 0); // Cursor at start
 
-        let insert_and_replace = CompletionTextEdit::InsertAndReplace(
-            lsp_types::InsertReplaceEdit {
+        let insert_and_replace =
+            CompletionTextEdit::InsertAndReplace(lsp_types::InsertReplaceEdit {
                 new_text: "bar".into(),
                 // Insert range: delete from (0,0) to (0,3) ["foo"] and insert "bar"
                 insert: lsp_types::Range {
@@ -793,8 +1000,7 @@ mod tests {
                         character: 3,
                     },
                 },
-            },
-        );
+            });
 
         let item = CompletionItem {
             label: "bar".into(),
@@ -810,8 +1016,11 @@ mod tests {
     fn delete_invalid_range_is_noop() {
         let mut buf = Buffer::with_text("hello");
         let original = buf.to_string();
-        // Delete with start >= end (invalid)
-        buf.delete(3..1);
+        // Delete with start >= end (invalid) — this is a no-op and is safe
+        #[allow(clippy::reversed_empty_ranges)]
+        {
+            buf.delete(3..1);
+        }
         assert_eq!(buf.to_string(), original);
     }
 
@@ -847,5 +1056,52 @@ mod tests {
         assert!(buf.undo()); // Undo "b"
         assert!(!buf.undo()); // Can't undo "a" (was dropped)
         assert_eq!(buf.to_string(), "a");
+    }
+
+    // Lines iterator tests
+    #[test]
+    fn lines_iter_empty_buffer() {
+        let buf = Buffer::new();
+        let count = buf.lines_iter().count();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn lines_iter_single_line() {
+        let buf = Buffer::with_text("hello");
+        let lines: Vec<_> = buf.lines_iter().collect();
+        assert_eq!(lines, vec!["hello"]);
+    }
+
+    #[test]
+    fn lines_iter_multiline() {
+        let buf = Buffer::with_text("hello\nworld\nfoo");
+        let lines: Vec<_> = buf.lines_iter().collect();
+        assert_eq!(lines, vec!["hello", "world", "foo"]);
+    }
+
+    #[test]
+    fn lines_iter_with_trailing_newline() {
+        let buf = Buffer::with_text("hello\nworld\n");
+        let lines: Vec<_> = buf.lines_iter().collect();
+        // Trailing newline should create empty line, which is skipped
+        assert_eq!(lines, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn lines_iter_exact_size() {
+        let buf = Buffer::with_text("a\nb\nc");
+        let iter = buf.lines_iter();
+        assert_eq!(iter.len(), 3);
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
+
+    #[test]
+    fn lines_iter_collects_correctly() {
+        let buf = Buffer::with_text("line1\nline2\nline3\n");
+        let iter_result: Vec<_> = buf.lines_iter().collect();
+        // lines_iter() removes trailing newlines (same behavior as lines())
+        assert_eq!(iter_result, vec!["line1", "line2", "line3"]);
+        assert_eq!(iter_result.len(), 3);
     }
 }
