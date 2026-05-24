@@ -95,19 +95,25 @@ struct ChatEntry {
     content: String,
 }
 
-struct App {
+/// Per-buffer state consolidates all buffer-specific fields
+struct BufferState {
     buffer: Buffer,
-    mode: Mode,
     filename: Option<PathBuf>,
     scroll_offset: usize,
     modified: bool,
+    highlighter: Option<Highlighter>,
+}
+
+struct App {
+    buffers: Vec<BufferState>,
+    active_buffer_idx: usize,
+    mode: Mode,
     pending_g: bool,
     pending_d: bool,
     pending_space: bool,
     command_buffer: String,
     should_quit: bool,
     status_message: Option<String>,
-    highlighter: Option<Highlighter>,
     /// LSP document manager for language server protocol integration
     document_manager: Option<DocumentManager>,
     /// Current diagnostics for the active file
@@ -179,19 +185,23 @@ impl App {
     fn new() -> Self {
         let chat_toggle_key = Self::key_from_env("IDEP_CHAT_TOGGLE_KEY", 'c');
         let chat_clear_key = Self::key_from_env("IDEP_CHAT_CLEAR_KEY", 'x');
-        Self {
+        let initial_buffer = BufferState {
             buffer: Buffer::new(),
-            mode: Mode::Normal,
             filename: None,
             scroll_offset: 0,
             modified: false,
+            highlighter: None,
+        };
+        Self {
+            buffers: vec![initial_buffer],
+            active_buffer_idx: 0,
+            mode: Mode::Normal,
             pending_g: false,
             pending_d: false,
             pending_space: false,
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
-            highlighter: None,
             document_manager: None,
             diagnostics: Vec::new(),
             diagnostic_panel_visible: false,
@@ -224,19 +234,23 @@ impl App {
         let chat_clear_key = Self::key_from_env("IDEP_CHAT_CLEAR_KEY", 'x');
         let content = std::fs::read_to_string(&path)?;
         let highlighter = Highlighter::new(&path).ok();
-        Ok(Self {
+        let initial_buffer = BufferState {
             buffer: Buffer::with_text(&content),
-            mode: Mode::Normal,
-            filename: Some(path),
+            filename: Some(path.clone()),
             scroll_offset: 0,
             modified: false,
+            highlighter,
+        };
+        Ok(Self {
+            buffers: vec![initial_buffer],
+            active_buffer_idx: 0,
+            mode: Mode::Normal,
             pending_g: false,
             pending_d: false,
             pending_space: false,
             command_buffer: String::new(),
             should_quit: false,
             status_message: None,
-            highlighter,
             document_manager: None,
             diagnostics: Vec::new(),
             diagnostic_panel_visible: false,
@@ -264,13 +278,58 @@ impl App {
         })
     }
 
+    fn active_buffer(&self) -> &Buffer {
+        &self.buffers[self.active_buffer_idx].buffer
+    }
+
+    fn active_buffer_mut(&mut self) -> &mut Buffer {
+        &mut self.buffers[self.active_buffer_idx].buffer
+    }
+
+    #[allow(dead_code)]
+    fn switch_buffer(&mut self, idx: usize) {
+        if idx < self.buffers.len() {
+            self.active_buffer_idx = idx;
+        }
+    }
+
+    #[allow(dead_code)]
+    fn add_buffer(&mut self, path: Option<PathBuf>) -> usize {
+        let filename = path.clone();
+        let highlighter = filename.as_ref().and_then(|p| Highlighter::new(p).ok());
+        let new_buffer = BufferState {
+            buffer: Buffer::new(),
+            filename,
+            scroll_offset: 0,
+            modified: false,
+            highlighter,
+        };
+        self.buffers.push(new_buffer);
+        self.buffers.len() - 1
+    }
+
+    #[allow(dead_code)]
+    fn remove_buffer(&mut self, idx: usize) {
+        if idx < self.buffers.len() && self.buffers.len() > 1 {
+            self.buffers.remove(idx);
+            if self.active_buffer_idx >= self.buffers.len() {
+                self.active_buffer_idx = self.buffers.len() - 1;
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn get_filename(&self) -> Option<&PathBuf> {
+        self.buffers[self.active_buffer_idx].filename.as_ref()
+    }
+
     fn cursor(&self) -> Cursor {
-        self.buffer.cursor()
+        self.active_buffer().cursor()
     }
 
     fn move_cursor(&mut self, dx: isize, dy: isize) {
-        let cursor = self.buffer.cursor();
-        let lines = self.buffer.lines();
+        let cursor = self.active_buffer().cursor();
+        let lines = self.active_buffer().lines();
         let line_count = lines.len().max(1);
 
         let new_line = if dy < 0 {
@@ -288,33 +347,33 @@ impl App {
             (cursor.column + dx as usize).min(max_col)
         };
 
-        self.buffer.set_cursor(new_line, new_col);
+        self.active_buffer_mut().set_cursor(new_line, new_col);
     }
 
     fn line_number_width(&self) -> u16 {
-        let line_count = self.buffer.lines().len().max(1);
+        let line_count = self.active_buffer().lines().len().max(1);
         (line_count.to_string().len() + 1).max(4) as u16
     }
 
     fn insert_char(&mut self, c: char) {
-        let pos = self.buffer.cursor_char_index();
-        self.buffer.insert(pos, &c.to_string());
-        self.modified = true;
+        let pos = self.active_buffer().cursor_char_index();
+        self.active_buffer_mut().insert(pos, &c.to_string());
+        self.buffers[self.active_buffer_idx].modified = true;
         self.send_did_change();
     }
 
     fn delete_char(&mut self) {
-        let pos = self.buffer.cursor_char_index();
+        let pos = self.active_buffer().cursor_char_index();
         if pos > 0 {
-            self.buffer.delete(pos - 1..pos);
-            self.modified = true;
+            self.active_buffer_mut().delete(pos - 1..pos);
+            self.buffers[self.active_buffer_idx].modified = true;
             self.send_did_change();
         }
     }
 
     fn undo(&mut self) {
-        if self.buffer.undo() {
-            self.modified = true;
+        if self.active_buffer_mut().undo() {
+            self.buffers[self.active_buffer_idx].modified = true;
             self.send_did_change();
             self.status_message = Some("undone".to_string());
         } else {
@@ -323,8 +382,8 @@ impl App {
     }
 
     fn redo(&mut self) {
-        if self.buffer.redo() {
-            self.modified = true;
+        if self.active_buffer_mut().redo() {
+            self.buffers[self.active_buffer_idx].modified = true;
             self.send_did_change();
             self.status_message = Some("redone".to_string());
         } else {
@@ -333,8 +392,8 @@ impl App {
     }
 
     fn move_word_forward(&mut self) {
-        let cursor = self.buffer.cursor();
-        let lines = self.buffer.lines();
+        let cursor = self.active_buffer().cursor();
+        let lines = self.active_buffer().lines();
         let mut line_idx = cursor.line;
         let mut col = cursor.column;
 
@@ -353,7 +412,7 @@ impl App {
 
             // If we found a non-whitespace char, stop here
             if col < chars.len() {
-                self.buffer.set_cursor(line_idx, col);
+                self.active_buffer_mut().set_cursor(line_idx, col);
                 return;
             }
 
@@ -365,12 +424,12 @@ impl App {
         // End of file - stay at last position
         let last_line = lines.len().saturating_sub(1);
         let last_col = lines.get(last_line).map(|l| l.chars().count()).unwrap_or(0);
-        self.buffer.set_cursor(last_line, last_col);
+        self.active_buffer_mut().set_cursor(last_line, last_col);
     }
 
     fn move_word_backward(&mut self) {
-        let cursor = self.buffer.cursor();
-        let lines = self.buffer.lines();
+        let cursor = self.active_buffer().cursor();
+        let lines = self.active_buffer().lines();
         let mut line_idx = cursor.line;
         let mut col = cursor.column;
 
@@ -403,13 +462,13 @@ impl App {
                 {
                     col -= 1;
                 }
-                self.buffer.set_cursor(line_idx, col);
+                self.active_buffer_mut().set_cursor(line_idx, col);
                 return;
             }
 
             // Move to previous line
             if line_idx == 0 {
-                self.buffer.set_cursor(0, 0);
+                self.active_buffer_mut().set_cursor(0, 0);
                 return;
             }
             line_idx -= 1;
@@ -418,34 +477,34 @@ impl App {
     }
 
     fn move_to_line_start(&mut self) {
-        let cursor = self.buffer.cursor();
-        self.buffer.set_cursor(cursor.line, 0);
+        let cursor = self.active_buffer().cursor();
+        self.active_buffer_mut().set_cursor(cursor.line, 0);
     }
 
     fn move_to_line_end(&mut self) {
-        let cursor = self.buffer.cursor();
-        let lines = self.buffer.lines();
+        let cursor = self.active_buffer().cursor();
+        let lines = self.active_buffer().lines();
         let line_len = lines
             .get(cursor.line)
             .map(|l| l.chars().count())
             .unwrap_or(0);
-        self.buffer.set_cursor(cursor.line, line_len);
+        self.active_buffer_mut().set_cursor(cursor.line, line_len);
     }
 
     fn move_to_file_start(&mut self) {
-        self.buffer.set_cursor(0, 0);
+        self.active_buffer_mut().set_cursor(0, 0);
     }
 
     fn move_to_file_end(&mut self) {
-        let lines = self.buffer.lines();
+        let lines = self.active_buffer().lines();
         let last_line = lines.len().saturating_sub(1);
         let last_col = lines.last().map(|l| l.chars().count()).unwrap_or(0);
-        self.buffer.set_cursor(last_line, last_col);
+        self.active_buffer_mut().set_cursor(last_line, last_col);
     }
 
     fn delete_line(&mut self) {
-        let cursor = self.buffer.cursor();
-        let rope = self.buffer.rope();
+        let cursor = self.active_buffer().cursor();
+        let rope = self.active_buffer().rope();
         let line_idx = cursor.line.min(rope.len_lines().saturating_sub(1));
         let line = rope.line(line_idx);
         let line_char_count = line.len_chars();
@@ -459,19 +518,21 @@ impl App {
             start_pos + line_char_count
         };
 
-        self.buffer.delete(start_pos..end_pos);
-        self.modified = true;
+        self.active_buffer_mut().delete(start_pos..end_pos);
+        self.buffers[self.active_buffer_idx].modified = true;
         self.send_did_change();
 
         // Move cursor to start of line (or previous line if this was the last)
-        let new_line = line_idx.min(self.buffer.lines().len().saturating_sub(1));
-        self.buffer.set_cursor(new_line, 0);
+        let new_line = line_idx.min(self.active_buffer().lines().len().saturating_sub(1));
+        self.active_buffer_mut().set_cursor(new_line, 0);
     }
 
     fn save(&mut self) -> Result<()> {
-        if let Some(ref path) = self.filename {
-            std::fs::write(path, self.buffer.to_string())?;
-            self.modified = false;
+        let path = self.buffers[self.active_buffer_idx].filename.clone();
+        if let Some(path) = path {
+            let content = self.active_buffer().to_string();
+            std::fs::write(&path, content)?;
+            self.buffers[self.active_buffer_idx].modified = false;
             self.status_message = Some(format!("saved {}", path.display()));
             // Send didSave notification if LSP is connected
             self.send_did_save();
@@ -486,7 +547,7 @@ impl App {
         if self.lsp_initialized {
             return;
         }
-        let Some(ref path) = self.filename else {
+        let Some(ref path) = self.buffers[self.active_buffer_idx].filename else {
             return;
         };
         let extension = path.extension().and_then(|e| e.to_str());
@@ -527,7 +588,7 @@ impl App {
         let mut doc_manager = DocumentManager::new(client);
         // Send didOpen for the current file
         let uri = lsp_types::Url::from_file_path(path).ok();
-        let text = self.buffer.to_string();
+        let text = self.active_buffer().to_string();
         if let Some(uri) = uri {
             let result = rt.block_on(async {
                 doc_manager
@@ -547,10 +608,11 @@ impl App {
     /// Currently unused but reserved for future multi-file support (:e command).
     #[allow(dead_code)]
     fn send_did_open(&mut self) {
+        let path = self.buffers[self.active_buffer_idx].filename.clone();
+        let text = self.active_buffer().to_string();
         if let Some(ref mut doc_manager) = self.document_manager {
-            if let Some(ref path) = self.filename {
-                let uri = lsp_types::Url::from_file_path(path).ok();
-                let text = self.buffer.to_string();
+            if let Some(path) = path {
+                let uri = lsp_types::Url::from_file_path(&path).ok();
                 let language_id = match path.extension().and_then(|e| e.to_str()) {
                     Some("rs") => "rust",
                     Some("ts") | Some("tsx") => "typescript",
@@ -593,11 +655,12 @@ impl App {
 
     /// Send the actual didChange notification to LSP server
     fn flush_did_change(&mut self) {
+        let path = self.buffers[self.active_buffer_idx].filename.clone();
+        let text = self.active_buffer().to_string();
         if let Some(ref mut doc_manager) = self.document_manager {
-            if let Some(ref path) = self.filename {
-                let uri = lsp_types::Url::from_file_path(path).ok();
+            if let Some(path) = path {
+                let uri = lsp_types::Url::from_file_path(&path).ok();
                 if let Some(uri) = uri {
-                    let text = self.buffer.to_string();
                     if let Some(ref rt) = self.lsp_runtime {
                         let result = rt.block_on(async {
                             let change = lsp_types::TextDocumentContentChangeEvent {
@@ -622,7 +685,7 @@ impl App {
         self.lsp_debounce_timer = None;
 
         if let Some(ref mut doc_manager) = self.document_manager {
-            if let Some(ref path) = self.filename {
+            if let Some(ref path) = self.buffers[self.active_buffer_idx].filename {
                 let uri = lsp_types::Url::from_file_path(path).ok();
                 if let Some(uri) = uri {
                     if let Some(ref rt) = self.lsp_runtime {
@@ -638,7 +701,7 @@ impl App {
 
     fn poll_diagnostics(&mut self) {
         let new_diagnostics = if let Some(ref doc_manager) = self.document_manager {
-            if let Some(ref path) = self.filename {
+            if let Some(ref path) = self.buffers[self.active_buffer_idx].filename {
                 let uri = lsp_types::Url::from_file_path(path).ok();
                 if let Some(uri) = uri {
                     doc_manager.get_diagnostics(&uri).to_vec()
@@ -674,11 +737,14 @@ impl App {
     }
 
     fn update_scroll(&mut self, viewport_height: usize) {
-        let cursor = self.buffer.cursor();
-        if cursor.line < self.scroll_offset {
-            self.scroll_offset = cursor.line;
-        } else if cursor.line >= self.scroll_offset + viewport_height {
-            self.scroll_offset = cursor.line.saturating_sub(viewport_height - 1);
+        let cursor = self.active_buffer().cursor();
+        if cursor.line < self.buffers[self.active_buffer_idx].scroll_offset {
+            self.buffers[self.active_buffer_idx].scroll_offset = cursor.line;
+        } else if cursor.line
+            >= self.buffers[self.active_buffer_idx].scroll_offset + viewport_height
+        {
+            self.buffers[self.active_buffer_idx].scroll_offset =
+                cursor.line.saturating_sub(viewport_height - 1);
         }
     }
 
@@ -705,8 +771,8 @@ impl App {
         self.completion_status = CompletionStatus::Fetching;
 
         // Capture buffer context at this moment
-        let lines = self.buffer.lines();
-        let cursor = self.buffer.cursor();
+        let lines = self.active_buffer().lines();
+        let cursor = self.active_buffer().cursor();
         let mut prefix = String::new();
         let mut suffix = String::new();
 
@@ -743,7 +809,7 @@ impl App {
         let req = CompletionRequest {
             prefix,
             suffix,
-            language: self
+            language: self.buffers[self.active_buffer_idx]
                 .filename
                 .as_ref()
                 .and_then(|p| p.extension())
@@ -805,9 +871,9 @@ impl App {
     /// Accept ghost text by inserting into buffer
     fn accept_completion(&mut self) -> Result<()> {
         if let Some(suggestion) = self.ghost_text.take() {
-            let pos = self.buffer.cursor_char_index();
-            self.buffer.insert(pos, &suggestion);
-            self.modified = true;
+            let pos = self.active_buffer().cursor_char_index();
+            self.active_buffer_mut().insert(pos, &suggestion);
+            self.buffers[self.active_buffer_idx].modified = true;
             self.send_did_change();
             // Dismiss any pending request
             if let Some(handle) = self.pending_completion.take() {
@@ -831,7 +897,7 @@ impl App {
                 self.save()?;
             }
             "q" => {
-                if self.modified {
+                if self.buffers[self.active_buffer_idx].modified {
                     self.status_message = Some(
                         "error: unsaved changes (use :wq to save or :q! to force)".to_string(),
                     );
@@ -841,7 +907,7 @@ impl App {
             }
             "wq" => {
                 self.save()?;
-                if self.filename.is_some() {
+                if self.buffers[self.active_buffer_idx].filename.is_some() {
                     self.should_quit = true;
                 }
             }
@@ -922,11 +988,11 @@ impl App {
     }
 
     fn build_chat_context(&self) -> String {
-        let lines = self.buffer.lines();
-        let cursor = self.buffer.cursor();
+        let lines = self.active_buffer().lines();
+        let cursor = self.active_buffer().cursor();
         let mut context = String::new();
 
-        let file_name = self
+        let file_name = self.buffers[self.active_buffer_idx]
             .filename
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
@@ -972,11 +1038,11 @@ impl App {
     }
 
     fn extract_cursor_ast_chunk(&self) -> Option<String> {
-        let path = self.filename.as_ref()?;
+        let path = self.buffers[self.active_buffer_idx].filename.as_ref()?;
         let language = Language::from_path(path);
         let ts_lang = language.ts_language()?;
 
-        let lines = self.buffer.lines();
+        let lines = self.active_buffer().lines();
         let source = lines.join("\n");
 
         let mut parser = Parser::new();
@@ -987,7 +1053,7 @@ impl App {
         let tree = parser.parse(&source, None)?;
         let root = tree.root_node();
 
-        let cursor = self.buffer.cursor();
+        let cursor = self.active_buffer().cursor();
         let point = tree_sitter::Point {
             row: cursor.line,
             column: cursor.column,
@@ -1232,9 +1298,10 @@ fn handle_mouse_event(
                     (app.chat_scroll + 1).min(app.chat_history.len().saturating_sub(1));
             } else {
                 // Scroll down by 3 lines
-                let lines = app.buffer.lines();
+                let lines = app.active_buffer().lines();
                 let max_scroll = lines.len().saturating_sub(viewport_height);
-                app.scroll_offset = (app.scroll_offset + 3).min(max_scroll);
+                app.buffers[app.active_buffer_idx].scroll_offset =
+                    (app.buffers[app.active_buffer_idx].scroll_offset + 3).min(max_scroll);
             }
         }
         MouseEventKind::ScrollUp => {
@@ -1242,7 +1309,10 @@ fn handle_mouse_event(
                 app.chat_scroll = app.chat_scroll.saturating_sub(1);
             } else {
                 // Scroll up by 3 lines
-                app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                app.buffers[app.active_buffer_idx].scroll_offset = app.buffers
+                    [app.active_buffer_idx]
+                    .scroll_offset
+                    .saturating_sub(3);
             }
         }
         MouseEventKind::Down(_) if mouse.column >= line_num_width => {
@@ -1257,8 +1327,9 @@ fn handle_mouse_event(
             // Click to position cursor
             // Mouse column includes line number gutter, so adjust
             let editor_col = mouse.column - line_num_width;
-            let clicked_line = app.scroll_offset + mouse.row as usize;
-            let lines = app.buffer.lines();
+            let clicked_line =
+                app.buffers[app.active_buffer_idx].scroll_offset + mouse.row as usize;
+            let lines = app.active_buffer().lines();
 
             if clicked_line < lines.len() {
                 let line_len = lines
@@ -1266,7 +1337,7 @@ fn handle_mouse_event(
                     .map(|l| l.chars().count())
                     .unwrap_or(0);
                 let new_col = (editor_col as usize).min(line_len);
-                app.buffer.set_cursor(clicked_line, new_col);
+                app.active_buffer_mut().set_cursor(clicked_line, new_col);
             }
         }
         _ => {}
@@ -1444,7 +1515,7 @@ fn get_highlight_spans(
 
     let mut result: HashMap<usize, Vec<highlight::HighlightedSpan>> = HashMap::new();
 
-    if let Some(ref mut highlighter) = app.highlighter {
+    if let Some(ref mut highlighter) = app.buffers[app.active_buffer_idx].highlighter {
         if !highlighter.has_highlighting() {
             return result;
         }
@@ -1554,17 +1625,18 @@ fn render(app: &mut App, frame: &mut Frame) {
     let editor_area = content_chunks[1];
 
     let viewport_height = editor_area.height as usize;
-    let lines = app.buffer.lines();
+    let lines = app.active_buffer().lines();
+    let scroll_offset = app.buffers[app.active_buffer_idx].scroll_offset;
     let visible_lines: Vec<String> = lines
         .iter()
-        .skip(app.scroll_offset)
+        .skip(scroll_offset)
         .take(viewport_height)
         .cloned()
         .collect();
 
     let line_number_width = app.line_number_width() as usize;
 
-    let line_numbers: Vec<Line> = (app.scroll_offset + 1..=app.scroll_offset + visible_lines.len())
+    let line_numbers: Vec<Line> = (scroll_offset + 1..=scroll_offset + visible_lines.len())
         .map(|i| {
             let style = if i - 1 == app.cursor().line {
                 Style::default()
@@ -1587,7 +1659,7 @@ fn render(app: &mut App, frame: &mut Frame) {
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let line_idx = app.scroll_offset + i;
+            let line_idx = scroll_offset + i;
             let cursor = app.cursor();
 
             // Build highlighted spans for this line
@@ -1932,13 +2004,17 @@ fn render(app: &mut App, frame: &mut Frame) {
         frame.render_widget(input_widget, input_area);
     }
 
-    let filename_str = app
+    let filename_str = app.buffers[app.active_buffer_idx]
         .filename
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "[No Name]".to_string());
 
-    let modified_str = if app.modified { " [+]" } else { "" };
+    let modified_str = if app.buffers[app.active_buffer_idx].modified {
+        " [+]"
+    } else {
+        ""
+    };
     let cursor = app.cursor();
 
     let status_spans = if app.mode == Mode::Command {
@@ -2063,5 +2139,193 @@ fn render(app: &mut App, frame: &mut Frame) {
             .block(Block::default().title("Diagnostics").borders(Borders::ALL))
             .style(Style::default().bg(Color::Black).fg(Color::White));
         frame.render_widget(diag_panel, diag_area);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_multi_buffer_add_switch() {
+        let mut app = App::new();
+        assert_eq!(app.buffers.len(), 1, "App should start with 1 buffer");
+        assert_eq!(
+            app.active_buffer_idx, 0,
+            "Active buffer should start at index 0"
+        );
+
+        let idx1 = app.add_buffer(None);
+        assert_eq!(app.buffers.len(), 2, "App should have 2 buffers after add");
+        assert_eq!(idx1, 1, "New buffer should be at index 1");
+
+        app.switch_buffer(1);
+        assert_eq!(
+            app.active_buffer_idx, 1,
+            "Active buffer should switch to index 1"
+        );
+
+        let idx2 = app.add_buffer(None);
+        assert_eq!(
+            app.buffers.len(),
+            3,
+            "App should have 3 buffers after second add"
+        );
+        assert_eq!(idx2, 2, "Second new buffer should be at index 2");
+
+        app.switch_buffer(0);
+        assert_eq!(
+            app.active_buffer_idx, 0,
+            "Active buffer should switch back to index 0"
+        );
+    }
+
+    #[test]
+    fn test_multi_buffer_remove() {
+        let mut app = App::new();
+        app.add_buffer(None);
+        app.add_buffer(None);
+        assert_eq!(app.buffers.len(), 3, "App should have 3 buffers");
+
+        app.switch_buffer(1);
+        app.remove_buffer(1);
+        assert_eq!(
+            app.buffers.len(),
+            2,
+            "App should have 2 buffers after remove"
+        );
+        assert_eq!(
+            app.active_buffer_idx, 1,
+            "Active index should adjust to 1 when buffer at 1 was removed"
+        );
+
+        app.remove_buffer(1);
+        assert_eq!(
+            app.buffers.len(),
+            1,
+            "App should have 1 buffer after removing last extra"
+        );
+        assert_eq!(
+            app.active_buffer_idx, 0,
+            "Active index should be 0 (last remaining buffer)"
+        );
+
+        app.remove_buffer(0);
+        assert_eq!(
+            app.buffers.len(),
+            1,
+            "Cannot remove the only buffer (min 1)"
+        );
+        assert_eq!(app.active_buffer_idx, 0, "Active index should still be 0");
+    }
+
+    #[test]
+    fn test_multi_buffer_isolation() {
+        let mut app = App::new();
+        app.active_buffer_mut().insert(0, "hello");
+
+        let _idx1 = app.add_buffer(None);
+        app.switch_buffer(1);
+        app.active_buffer_mut().insert(0, "world");
+
+        assert_eq!(
+            app.active_buffer().to_string(),
+            "world",
+            "Buffer 1 should have 'world'"
+        );
+
+        app.switch_buffer(0);
+        assert_eq!(
+            app.active_buffer().to_string(),
+            "hello",
+            "Buffer 0 should still have 'hello'"
+        );
+    }
+
+    #[test]
+    fn test_active_buffer_methods() {
+        let mut app = App::new();
+
+        let buf = app.active_buffer();
+        assert_eq!(buf.to_string(), "", "New buffer should be empty");
+
+        app.active_buffer_mut().insert(0, "first");
+        let first_content = app.active_buffer().to_string();
+        assert_eq!(
+            first_content, "first",
+            "Buffer 0 should contain inserted text"
+        );
+
+        let idx = app.add_buffer(None);
+        app.switch_buffer(idx);
+        assert_eq!(
+            app.active_buffer().to_string(),
+            "",
+            "New buffer should be empty"
+        );
+
+        app.active_buffer_mut().insert(0, "second");
+        assert_eq!(
+            app.active_buffer().to_string(),
+            "second",
+            "Buffer 1 should contain 'second'"
+        );
+
+        app.switch_buffer(0);
+        assert_eq!(
+            app.active_buffer().to_string(),
+            "first",
+            "Should switch back to buffer 0 with 'first'"
+        );
+    }
+
+    #[test]
+    fn test_get_filename() {
+        let mut app = App::new();
+        assert_eq!(app.get_filename(), None, "Initial buffer has no filename");
+
+        app.add_buffer(Some(PathBuf::from("test.rs")));
+        app.switch_buffer(1);
+        assert_eq!(
+            app.get_filename().map(|p| p.to_string_lossy().to_string()),
+            Some("test.rs".to_string()),
+            "Should get filename from current buffer"
+        );
+
+        app.switch_buffer(0);
+        assert_eq!(
+            app.get_filename(),
+            None,
+            "First buffer still has no filename"
+        );
+    }
+
+    #[test]
+    fn test_per_buffer_state() {
+        let mut app = App::new();
+
+        app.buffers[0].modified = true;
+        app.buffers[0].scroll_offset = 5;
+
+        app.add_buffer(None);
+        app.switch_buffer(1);
+        assert!(
+            !app.buffers[app.active_buffer_idx].modified,
+            "New buffer should not be marked modified"
+        );
+        assert_eq!(
+            app.buffers[app.active_buffer_idx].scroll_offset, 0,
+            "New buffer should have scroll_offset 0"
+        );
+
+        app.switch_buffer(0);
+        assert!(
+            app.buffers[0].modified,
+            "Buffer 0 state should be preserved"
+        );
+        assert_eq!(
+            app.buffers[0].scroll_offset, 5,
+            "Buffer 0 scroll_offset should be preserved"
+        );
     }
 }
