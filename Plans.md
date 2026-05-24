@@ -16,9 +16,14 @@ v0.1.5 adds two complementary features to the TUI: a navigable file tree panel a
 
 ## Phase 1: Multi-Buffer Foundation
 
+### Task 1.1: Original task decomposed into 1.1a + 1.1b + 1.1c (see below)
+**Status**: cc:完了 [decomposed-for-delivery]
+---
+
 ### Task 1.1a: Structural Refactor - BufferState & Helpers
 **DoD**: BufferState struct consolidates per-buffer state; App holds Vec<BufferState> + active_buffer_idx; helper methods work; TDD tests pass
 **Depends**: -
+**Status**: cc:TODO
 **Details**:
 - Define BufferState struct: consolidates buffer, filename, scroll_offset, modified, highlighter
 - Refactor App struct: replace single fields with Vec<BufferState> and active_buffer_idx
