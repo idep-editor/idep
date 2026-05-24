@@ -22,5 +22,6 @@
 # Agents and memory
 .claude/
 .harness-mem/
-.claude/commands/
 out/
+Plans.md
+CLAUDE.md
